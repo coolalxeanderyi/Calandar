@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>計劃版</title>
+  <script>
+    // 舊版網址（例如 /Calandar/v5/）或打錯的網址，一律回到計劃版首頁。
+    // ?r= 讓瀏覽器一定去拿新的首頁，不會用到存著的舊首頁；首頁會自己把它從網址拿掉。
+    (function () {
+      var p = location.pathname;
+      var base = p.replace(/\/v\d+(\/.*)?$/, '/');
+      if (base === p) base = p.replace(/^(\/[^/]+\/).*$/, '$1');
+      if (base === p) base = '/';
+      location.replace(base + '?r=' + Date.now() + location.hash);
+    })();
+  </script>
+</head>
+<body>
+  <p><a href="/Calandar/">回到計劃版</a></p>
+</body>
+</html>

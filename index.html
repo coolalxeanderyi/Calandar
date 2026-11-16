@@ -2,26 +2,56 @@
 <html lang="zh-Hant-TW">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>計劃版</title>
-  <!-- 自動轉到最新版本：每次都重新讀 latest.json（不用快取）。出新版時只要改 latest.json。 -->
+  <meta name="description" content="任務、行事曆、目標和習慣，整理在同一個地方，手機和電腦同步。">
+  <meta name="theme-color" content="#FFF6F3">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="計劃版">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&display=swap">
+  <link rel="stylesheet" href="css/style.css">
   <script>
-    (async function () {
-      var path = './v6/';
+    // 從舊網址轉回來時，網址會帶 ?r=…（讓瀏覽器一定拿到新的首頁），這裡把它拿掉，網址保持乾淨
+    (function () {
       try {
-        path = localStorage.getItem('planner.latestPath') || path;
+        var q = new URLSearchParams(location.search);
+        if (q.has('r')) {
+          q.delete('r');
+          var s = q.toString();
+          history.replaceState(null, '', location.pathname + (s ? '?' + s : '') + location.hash);
+        }
       } catch (e) {}
+    })();
+    // 先套用上次使用的配色主題和深淺模式，避免畫面閃一下
+    (function () {
       try {
-        var res = await fetch('./latest.json?t=' + Date.now(), { cache: 'no-store' });
-        var info = await res.json();
-        if (info && /^v\d+$/.test(info.version)) path = './' + info.version + '/';
+        var root = document.documentElement;
+        var t = localStorage.getItem('planner.v1.theme') || 'auto';
+        var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        root.dataset.theme = dark ? 'dark' : 'light';
+        var look = JSON.parse(localStorage.getItem('planner.v3.look') || 'null');
+        var vars = look && (dark ? look.dark : look.light);
+        if (vars) {
+          root.dataset.palette = look.palette;
+          for (var k in vars) if (/^--[a-z0-9-]+$/.test(k)) root.style.setProperty(k, vars[k]);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta && vars['--bg']) meta.setAttribute('content', vars['--bg']);
+        }
       } catch (e) {}
-      location.replace(path + location.search + location.hash);
     })();
   </script>
-  <noscript><meta http-equiv="refresh" content="0; url=./v6/"></noscript>
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <p><a href="./v6/">前往計劃版</a></p>
+  <div id="app"><p class="boot">載入中…</p></div>
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root"></div>
+  <noscript><p class="boot">這個網站需要開啟 JavaScript 才能使用。</p></noscript>
 </body>
 </html>
