@@ -4,7 +4,7 @@
 版面參考 Notion 的 Planner OS 模板：上方是封面和分頁按鈕，下面是一塊一塊的區塊。
 第二版（`v2/`）改成可愛的手帳風：粉彩配色、粉圓字體、紙膠帶標題，還有吉祥物「小日曆」。
 
-網站網址（開啟 GitHub Pages 之後）：<https://coolalxeanderyi.github.io/Calander/>
+網站網址（開啟 GitHub Pages 之後）：<https://coolalxeanderyi.github.io/Calandar/>
 
 ## 功能
 
@@ -25,7 +25,7 @@
 1. 打開這個 repo 的 **Settings → Pages**
 2. **Source** 選 **Deploy from a branch**
 3. **Branch** 選 `main`，資料夾選 `/ (root)`，按 **Save**
-4. 等一兩分鐘，網站就會出現在 <https://coolalxeanderyi.github.io/Calander/>
+4. 等一兩分鐘，網站就會出現在 <https://coolalxeanderyi.github.io/Calandar/>
 
 這時候打開網站，會看到「連接 Firebase 之後就能開始用」的畫面，也可以先按「先試用」看看（試用模式的資料只存在那台裝置）。
 
@@ -78,7 +78,7 @@ export const firebaseConfig = {
 網站用的是 JavaScript 模組，不能直接雙擊 `index.html` 打開，要用一個簡單的伺服器：
 
 ```bash
-cd Calander
+cd Calandar
 python3 -m http.server 8000
 ```
 
@@ -87,7 +87,7 @@ python3 -m http.server 8000
 ## 檔案結構
 
 ```
-Calander/
+Calandar/
 ├── index.html          自動轉到最新版本（現在是 v2/）
 ├── firebase-config.js  Firebase 設定，所有版本共用
 ├── firestore.rules     Firestore 安全規則（貼到 Firebase 主控台）

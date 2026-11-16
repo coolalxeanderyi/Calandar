@@ -17,7 +17,7 @@ import habits from './views/habits.js';
 
 const MODE_KEY = 'planner.v1.mode';
 const THEME_KEY = 'planner.v1.theme';
-const README_URL = 'https://github.com/coolalxeanderyi/Calander#readme';
+const README_URL = 'https://github.com/coolalxeanderyi/Calandar#readme';
 
 const VIEWS = { '': dashboard, tasks, calendar, goals, habits };
 const NAV = [
