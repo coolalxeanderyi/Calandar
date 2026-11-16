@@ -4,11 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>計劃版</title>
-  <!-- 自動轉到最新版本。之後出新版時（例如 v6/），只要改這裡的路徑。 -->
-  <meta http-equiv="refresh" content="0; url=./v5/">
-  <script>location.replace('./v5/' + location.search + location.hash);</script>
+  <!-- 自動轉到最新版本：每次都重新讀 latest.json（不用快取）。出新版時只要改 latest.json。 -->
+  <script>
+    (async function () {
+      var path = './v6/';
+      try {
+        path = localStorage.getItem('planner.latestPath') || path;
+      } catch (e) {}
+      try {
+        var res = await fetch('./latest.json?t=' + Date.now(), { cache: 'no-store' });
+        var info = await res.json();
+        if (info && /^v\d+$/.test(info.version)) path = './' + info.version + '/';
+      } catch (e) {}
+      location.replace(path + location.search + location.hash);
+    })();
+  </script>
+  <noscript><meta http-equiv="refresh" content="0; url=./v6/"></noscript>
 </head>
 <body>
-  <p><a href="./v5/">前往計劃版</a></p>
+  <p><a href="./v6/">前往計劃版</a></p>
 </body>
 </html>
