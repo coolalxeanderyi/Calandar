@@ -1358,8 +1358,9 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 .group-head .group-title { margin: 0; padding-bottom: 0; border-bottom: 0; }
 
 /* ---------- 購物清單 ---------- */
-.shop-add, .money-add { grid-template-columns: minmax(0, 1fr) auto; }
+.shop-add { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto auto; }
 .money-add { grid-template-columns: minmax(0, 1fr) auto auto; }
+.money-sym { flex: none; align-self: center; color: var(--ink-2); font-size: 20px; }
 .shop-toolbar { justify-content: space-between; }
 .shop-sum { flex: 1; color: var(--ink-3); font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; }
 .tag.tag-price { background: var(--butter-soft, var(--wash)); font-variant-numeric: tabular-nums; }
@@ -1435,8 +1436,8 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 }
 @media (max-width: 640px) {
   .shop-add, .money-add { grid-template-columns: minmax(0, 1fr) auto; }
-  .shop-add input[name="name"], .money-add input[name="text"] { grid-column: 1 / -1; }
-  .add-bar.money-add .btn { grid-column: auto; }
+  .shop-add input[name="name"], .shop-add input[name="note"], .money-add input[name="text"] { grid-column: 1 / -1; }
+  .add-bar.money-add .btn, .add-bar.shop-add .btn { grid-column: auto; }
   .money-stats { gap: 8px; }
   .money-stat { padding: 10px 12px; border-radius: 18px; }
   .money-stat-num { font-size: 18px; }

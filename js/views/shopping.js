@@ -21,7 +21,7 @@ function itemMeta(item, cur) {
 }
 
 function itemRow(item, cur) {
-  return `<li class="shop-item${item.done ? ' is-done' : ''}" data-id="${esc(item.id)}">
+  return `<li class="task shop-item${item.done ? ' is-done' : ''}" data-id="${esc(item.id)}">
     <button type="button" class="check" role="checkbox" aria-checked="${item.done}" data-action="shop-toggle" data-id="${esc(item.id)}" aria-label="${item.done ? '還沒買' : '買到了'}：${esc(item.name)}">${icon('check')}</button>
     <button type="button" class="task-main" data-action="shop-edit" data-id="${esc(item.id)}">
       <span class="task-title">${esc(item.name)}</span>
@@ -36,7 +36,8 @@ function preview(text) {
   const parts = [];
   if (p.qty) parts.push(p.qty);
   if (p.store) parts.push(`#${p.store}`);
-  if (p.price !== null) parts.push(fmtMoney(p.price, currencyOf(store.state.settings)));
+  if (p.price !== null) parts.push(fmtMoney(p.price, currencyOf()));
+  if (p.note) parts.push(`備註：${p.note}`);
   return parts.length ? `<span class="qa-label">會加上</span>${parts.map((x) => `<span class="qa-part">${esc(x)}</span>`).join('')}` : '';
 }
 
@@ -62,7 +63,7 @@ export function shoppingText(items) {
 
 export default {
   render(state) {
-    const cur = currencyOf(state.settings);
+    const cur = currencyOf();
     const all = state.shopping;
     const toBuy = all.filter((i) => !i.done);
     const bought = all.filter((i) => i.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
@@ -90,7 +91,9 @@ export default {
     <div class="shop-view">
       <form class="add-bar shop-add" data-submit="shop-add">
         <input name="name" data-keep="shop-add" data-input="shop-preview" data-preview placeholder="要買什麼？例如：牛奶 2瓶 #全聯" autocomplete="off" aria-label="要買的東西" aria-describedby="shop-add-preview" maxlength="200">
+        <input name="note" data-keep="shop-add-note" placeholder="備註（可不填），例如：要低脂的" autocomplete="off" aria-label="備註" maxlength="300">
         <button class="btn primary" type="submit">${icon('plus')}加入</button>
+        <button class="btn ghost" type="button" data-action="shop-new">詳細</button>
         <p class="qa-preview" id="shop-add-preview" data-shop-preview aria-live="polite"></p>
       </form>
 
@@ -113,7 +116,7 @@ export default {
         </div>
         <ul class="task-list shop-list">${bought.slice(0, 30).map((i) => itemRow(i, cur)).join('')}</ul>
       </section>` : ''}
-      <p class="cal-tip">提示：「#店家」會分組，「2瓶」「x2」是數量，「£3.5」「120元」是價錢。買到了打勾時，可以順便記到記帳簿。</p>
+      <p class="cal-tip">提示：「#店家」會分組，「2瓶」「x2」是數量，「120元」是價錢，括號裡的字是備註，例如「優格（要無糖的）」。買到了打勾時，可以順便記到記帳簿。</p>
     </div>`;
   },
 
@@ -138,6 +141,22 @@ export default {
     'shop-edit'(el) {
       const item = store.state.shopping.find((i) => i.id === el.dataset.id);
       if (item) openItemModal(item);
+    },
+    // 「詳細」：一欄一欄填（剛剛打到一半的字會帶進去）
+    'shop-new'(el, e, ctx) {
+      const form = el.form;
+      const p = parseShop(form.elements.name.value);
+      const note = [p.note, form.elements.note.value.trim()].filter(Boolean).join('，');
+      const storeName = p.store || (ui.store && ui.store !== NO_STORE ? ui.store : '');
+      openItemModal(null, { name: p.name, qty: p.qty, store: storeName, price: p.price, note }, {
+        onSaved: () => {
+          ctx.forgetDrafts(['shop-add', 'shop-add-note']);
+          if (!form.isConnected) return;
+          form.elements.name.value = '';
+          form.elements.note.value = '';
+          form.querySelector('[data-shop-preview]').innerHTML = '';
+        },
+      });
     },
     async 'shop-copy'() {
       const items = store.state.shopping.filter((i) => !i.done);
@@ -176,8 +195,10 @@ export default {
         return;
       }
       const storeName = p.store || (ui.store && ui.store !== NO_STORE ? ui.store : '');
-      store.addDoc('shopping', { name: p.name, qty: p.qty, store: storeName, price: p.price });
+      const note = [p.note, form.elements.note.value.trim()].filter(Boolean).join('，');
+      store.addDoc('shopping', { name: p.name, qty: p.qty, store: storeName, price: p.price, note });
       ctx.clearDrafts(form);
+      form.elements.note.value = '';
       form.querySelector('[data-shop-preview]').innerHTML = '';
       input.focus();
     },
@@ -185,12 +206,15 @@ export default {
 
   // 在這一頁按 N：輸入要買的東西
   onNew() {
-    document.querySelector('.shop-add input')?.focus();
+    document.querySelector('.shop-add input[name="name"]')?.focus();
   },
 };
 
-export function openItemModal(item) {
-  const cur = currencyOf(store.state.settings);
+// item：要編輯的東西；null＝新增（defaults 是預先填好的欄位）
+export function openItemModal(item, defaults = {}, { onSaved } = {}) {
+  const isNew = !item;
+  item = item || { name: '', qty: '', store: '', price: null, note: '', ...defaults };
+  const cur = currencyOf();
   const stores = [...new Set(store.state.shopping.map((i) => i.store).filter(Boolean))].sort();
   const body = `
     <div class="field"><label for="sm-name">要買什麼</label>
@@ -208,9 +232,10 @@ export function openItemModal(item) {
       <input id="sm-note" name="note" value="${esc(item.note)}" maxlength="300" autocomplete="off" placeholder="例如：要低脂的"></div>`;
 
   openModal({
-    title: '編輯要買的東西',
+    title: isNew ? '新增要買的東西' : '編輯要買的東西',
     body,
-    extra: [{
+    submitLabel: isNew ? '加入' : '儲存',
+    extra: isNew ? [] : [{
       label: '刪除',
       icon: 'trash',
       className: 'ghost danger-text',
@@ -234,8 +259,15 @@ export function openItemModal(item) {
           return false;
         }
       }
-      store.updateDoc('shopping', item.id, { name, qty: f.qty.value.trim(), store: f.store.value.trim(), price, note: f.note.value.trim() });
-      toast('已儲存');
+      const data = { name, qty: f.qty.value.trim(), store: f.store.value.trim(), price, note: f.note.value.trim() };
+      if (isNew) {
+        store.addDoc('shopping', data);
+        toast(`已加入「${name}」`);
+      } else {
+        store.updateDoc('shopping', item.id, data);
+        toast('已儲存');
+      }
+      onSaved?.();
       return true;
     },
   });

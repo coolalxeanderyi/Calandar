@@ -62,17 +62,23 @@ export function guessCurrency(tz) {
   if (zone.startsWith('Europe/')) return 'EUR';
   return 'TWD';
 }
-export const currencyOf = (settings = {}) => settings.currency || guessCurrency();
+// 記帳一律用新台幣（以前記成其他貨幣的也當成新台幣顯示）
+export const LEDGER_CURRENCY = 'TWD';
+export const currencyOf = () => LEDGER_CURRENCY;
 
-export function roundMoney(n, cur) {
-  const f = 10 ** curInfo(cur).digits;
+// 新台幣：平常是整數，有小數時最多兩位（例如 NT$8.5）
+const digitsOf = (cur) => (cur === 'TWD' ? [0, 2] : [curInfo(cur).digits, curInfo(cur).digits]);
+
+export function roundMoney(n, cur = LEDGER_CURRENCY) {
+  const f = 10 ** digitsOf(cur)[1];
   return Math.round(n * f) / f;
 }
 
-export function fmtMoney(n, cur, { sign = false } = {}) {
+export function fmtMoney(n, cur = LEDGER_CURRENCY, { sign = false } = {}) {
   const c = curInfo(cur);
+  const [min, max] = digitsOf(cur);
   const abs = Math.abs(n);
-  const text = abs.toLocaleString('en-US', { minimumFractionDigits: c.digits, maximumFractionDigits: c.digits });
+  const text = abs.toLocaleString('en-US', { minimumFractionDigits: min, maximumFractionDigits: max });
   const pre = n < 0 ? '−' : sign && n > 0 ? '+' : '';
   return `${pre}${c.symbol}${text}`;
 }

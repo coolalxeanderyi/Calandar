@@ -6,7 +6,7 @@ import { emptyState } from '../components.js';
 import { MONEY_MAX } from '../model.js';
 import {
   catsOf, catOf, currencyOf, curInfo, fmtMoney, parseMoney, summarize, addMonths, daysInMonth, readAmount, roundMoney,
-  fallbackCat, CURRENCY_LIST, DEFAULT_CATS,
+  fallbackCat, DEFAULT_CATS,
 } from '../money.js';
 
 const ui = { month: '' };
@@ -26,7 +26,7 @@ function preview(text, settings) {
   const p = parseMoney(text, { today, weekStart: settings.weekStart, cats });
   if (p.amount === null) return '<span class="qa-label">還沒看到金額，例如「午餐 8.5」</span>';
   const cat = cats.find((c) => c.id === p.cat);
-  const cur = p.currency || currencyOf(settings);
+  const cur = currencyOf();
   const parts = [
     p.type === 'in' ? '收入' : '支出',
     fmtMoney(roundMoney(p.amount, cur), cur),
@@ -101,7 +101,7 @@ function budgetBox(sum, settings, month, today, cur) {
     text = `<span class="money-over">${icon('alert')}超出預算 ${fmtMoney(-left, cur)}</span>`;
   } else if (isNow) {
     const daysLeft = daysInMonth(month) - Number(today.slice(8)) + 1;
-    text = `還剩 <strong>${fmtMoney(left, cur)}</strong>，這個月還有 ${daysLeft} 天，平均每天可以花 ${fmtMoney(roundMoney(left / daysLeft, cur), cur)}`;
+    text = `還剩 <strong>${fmtMoney(left, cur)}</strong>，這個月還有 ${daysLeft} 天，平均每天可以花 ${fmtMoney(Math.floor(left / daysLeft), cur)}`;
   } else {
     text = month < today.slice(0, 7) ? `用了 ${pct}%，剩下 ${fmtMoney(left, cur)}` : `預算 ${fmtMoney(budget, cur)}`;
   }
@@ -119,7 +119,8 @@ export default {
     const cur = currencyOf(settings);
     const cats = catsOf(settings);
     const month = ui.month || today.slice(0, 7);
-    const entries = state.ledger.filter((e) => e.date);
+    // 記帳一律用新台幣：以前記成其他貨幣的也當成新台幣
+    const entries = state.ledger.filter((e) => e.date).map((e) => (e.currency === cur ? e : { ...e, currency: cur }));
     const inMonth = entries.filter((e) => e.date.startsWith(month)).sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1));
     const sum = summarize(inMonth, cur, cats);
     const isNow = month === today.slice(0, 7);
@@ -129,7 +130,6 @@ export default {
       if (!days.length || days[days.length - 1].key !== e.date) days.push({ key: e.date, items: [] });
       days[days.length - 1].items.push(e);
     }
-    const others = [...sum.others.entries()].map(([c, o]) => [o.out ? `支出 ${fmtMoney(o.out, c)}` : '', o.in ? `收入 ${fmtMoney(o.in, c)}` : ''].filter(Boolean).join('、')).filter(Boolean);
 
     return `
     <div class="money-view">
@@ -147,7 +147,7 @@ export default {
           <button type="button" class="icon-btn" data-action="money-month" data-step="1" aria-label="下個月">${icon('right')}</button>
           ${isNow ? '' : '<button type="button" class="btn small ghost" data-action="money-month" data-step="0">回到這個月</button>'}
         </div>
-        <button type="button" class="btn small ghost" data-action="money-settings">${icon('settings')}貨幣、預算、分類</button>
+        <button type="button" class="btn small ghost" data-action="money-settings">${icon('settings')}預算、分類</button>
       </div>
 
       <div class="money-stats">
@@ -155,7 +155,6 @@ export default {
         <div class="money-stat"><span class="money-stat-label">收入</span><span class="money-stat-num">${fmtMoney(sum.in, cur)}</span></div>
         <div class="money-stat"><span class="money-stat-label">結餘</span><span class="money-stat-num${sum.net < 0 ? ' is-neg' : ''}">${fmtMoney(sum.net, cur)}</span></div>
       </div>
-      ${others.length ? `<p class="hint money-others">另外還有其他貨幣：${esc(others.join('；'))}（不會換算，也不算在上面）</p>` : ''}
       ${budgetBox(sum, settings, month, today, cur)}
 
       <div class="money-grid">
@@ -191,7 +190,7 @@ export default {
       const input = el.form?.elements.text;
       const settings = store.state.settings;
       const p = input?.value.trim() ? parseMoney(input.value, { today: todayKey(), weekStart: settings.weekStart, cats: catsOf(settings) }) : null;
-      openMoneyModal(null, p ? { title: p.title, amount: p.amount ?? '', type: p.type, cat: p.cat, date: p.date, currency: p.currency } : {}, {
+      openMoneyModal(null, p ? { title: p.title, amount: p.amount ?? '', type: p.type, cat: p.cat, date: p.date } : {}, {
         onSaved: () => {
           if (input) {
             input.value = '';
@@ -231,7 +230,7 @@ export default {
         input.focus();
         return;
       }
-      const currency = p.currency || currencyOf(settings);
+      const currency = currencyOf();
       const amount = roundMoney(Math.min(p.amount, MONEY_MAX), currency);
       const data = { type: p.type, amount, currency, cat: p.cat, title: p.title, date: p.date };
       const id = store.addDoc('ledger', data);
@@ -267,7 +266,6 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
   const base = entry || {
     type: defaults.type === 'in' ? 'in' : 'out',
     amount: defaults.amount ?? '',
-    currency: defaults.currency || currencyOf(settings),
     cat: defaults.cat || '',
     title: defaults.title || '',
     date: defaults.date || todayKey(),
@@ -278,7 +276,7 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
     base.cat = p.cat !== fallbackCat(base.type) ? p.cat : (cats.some((c) => c.id === defaults.fallback && c.type === base.type) ? defaults.fallback : p.cat);
   }
   const selected = catOf({ type: base.type, cat: base.cat }, cats).id;
-  const cur = base.currency || currencyOf(settings);
+  const cur = currencyOf();
   const body = `
     <div class="seg money-type" role="radiogroup" aria-label="支出還是收入">
       <label class="seg-opt"><input type="radio" name="type" value="out"${base.type === 'out' ? ' checked' : ''}><span>支出</span></label>
@@ -286,7 +284,7 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
     </div>
     <div class="field"><label for="mm-amount">金額</label>
       <div class="money-input">
-        <select name="currency" aria-label="貨幣">${CURRENCY_LIST.map((c) => `<option value="${c.id}"${c.id === cur ? ' selected' : ''}>${esc(c.symbol)}</option>`).join('')}</select>
+        <span class="money-sym" aria-hidden="true">${esc(curInfo(cur).symbol)}</span>
         <input id="mm-amount" name="amount" value="${base.amount === '' ? '' : esc(String(base.amount))}" inputmode="decimal" autocomplete="off" autofocus placeholder="0">
       </div></div>
     <fieldset class="field"><legend>分類</legend>
@@ -340,7 +338,7 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
         return false;
       }
       const type = form.querySelector('input[name="type"]:checked')?.value === 'in' ? 'in' : 'out';
-      const currency = f.currency.value;
+      const currency = cur;
       const data = {
         type,
         amount: roundMoney(amount, currency),
@@ -376,24 +374,18 @@ function catRow(c, isDefault) {
 export function openMoneySettings() {
   const settings = store.state.settings;
   const cats = catsOf(settings);
-  const cur = currencyOf(settings);
   const isDefault = !settings.ledgerCats.length;
   const list = (type) => `<ul class="cat-list" data-cat-list="${type}">${cats.filter((c) => c.type === type).map((c) => catRow(c, isDefault)).join('')}</ul>
     <button type="button" class="btn small ghost" data-cat-add="${type}">${icon('plus')}新增${type === 'in' ? '收入' : '支出'}分類</button>`;
   const body = `
-    <div class="field-row">
-      <div class="field grow"><label for="ms-cur">貨幣</label>
-        <select id="ms-cur" name="currency">${CURRENCY_LIST.map((c) => `<option value="${c.id}"${c.id === cur ? ' selected' : ''}>${esc(c.symbol)} ${esc(c.name)}（${c.id}）</option>`).join('')}</select></div>
-      <div class="field grow"><label for="ms-budget">每月支出預算（不填＝不設）</label>
-        <input id="ms-budget" name="budget" value="${settings.budget || ''}" inputmode="decimal" autocomplete="off" placeholder="例如 500"></div>
-    </div>
-    <p class="hint">換貨幣之後，以前記的帳還是用原本的貨幣，不會換算。</p>
+    <div class="field"><label for="ms-budget">每月支出預算（新台幣，不填＝不設）</label>
+      <input id="ms-budget" name="budget" value="${settings.budget || ''}" inputmode="decimal" autocomplete="off" placeholder="例如 15000"></div>
     <fieldset class="field"><legend>支出分類</legend>${list('out')}</fieldset>
     <fieldset class="field"><legend>收入分類</legend>${list('in')}</fieldset>
     ${isDefault ? '' : '<button type="button" class="link-btn" data-cat-reset>恢復預設分類</button>'}`;
 
   openModal({
-    title: '貨幣、預算、分類',
+    title: '預算、分類',
     body,
     size: 'lg',
     onOpen(form) {
@@ -459,7 +451,7 @@ export function openMoneySettings() {
         next.push({ id: row.dataset.id, type, name, emoji: row.querySelector('.cat-emoji-input').value.trim() || (type === 'in' ? '💰' : '📦') });
       }
       const same = JSON.stringify(next) === JSON.stringify(DEFAULT_CATS.map(({ words, ...c }) => c));
-      store.saveSettings({ currency: f.currency.value, budget: roundMoney(budget, f.currency.value), ledgerCats: same ? [] : next });
+      store.saveSettings({ currency: currencyOf(), budget: roundMoney(budget), ledgerCats: same ? [] : next });
       toast('已儲存');
       return true;
     },
