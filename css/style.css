@@ -1352,3 +1352,7 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 @media (pointer: coarse) {
   .ts-btn { min-height: 30px; padding-inline: 12px; }
 }
+
+/* 「沒有日期」那一組的標題列：右邊有「全部排到今天」 */
+.group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 4px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
+.group-head .group-title { margin: 0; padding-bottom: 0; border-bottom: 0; }

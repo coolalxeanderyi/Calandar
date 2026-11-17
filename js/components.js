@@ -277,7 +277,8 @@ function saveAsTemplate(data) {
 
 export function openTaskModal(task = null, defaults = {}) {
   const base = { title: '', notes: '', date: '', time: '', duration: 60, priority: 'none', status: 'todo', goalId: '', repeat: 'none', repeatDays: [], repeatUntil: '', checklist: [], tags: [], remind: null };
-  const t = task ? { ...base, ...task } : { ...base, ...defaults };
+  // 新任務沒有指定日期時，預設是今天（不想排日期可以把日期清掉）
+  const t = task ? { ...base, ...task } : { ...base, ...defaults, date: defaults.date || todayKey() };
   const tags = allTags();
   const templates = store.state.settings.templates;
   const calendarOn = bridgeOn() || store.state.settings.gcalOn;

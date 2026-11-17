@@ -77,6 +77,7 @@ export const store = {
       goals: [],
       habits: [],
       reviews: [],
+      journal: [],
       settings: { ...DEFAULT_SETTINGS },
     });
     const seen = new Set();

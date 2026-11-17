@@ -65,6 +65,21 @@ function boardHTML(tasks, ctx) {
     ${repeating ? `<p class="hint board-note">重複的任務不會出現在看板上（${repeating} 個），請在清單裡看。</p>` : ''}`;
 }
 
+// 優先度、標籤、搜尋的篩選
+function applyFilters(list, goalsById = goalsMap(), tagsById = tagMap()) {
+  let tasks = list;
+  if (ui.prio !== 'all') tasks = tasks.filter((t) => t.priority === ui.prio);
+  if (ui.tag) tasks = tasks.filter((t) => t.tags.includes(ui.tag));
+  if (ui.query) {
+    // 名稱、備註、小清單、所屬目標、標籤都會找
+    const q = ui.query.toLowerCase();
+    const has = (text) => (text || '').toLowerCase().includes(q);
+    tasks = tasks.filter((t) => has(t.title) || has(t.notes) || t.checklist.some((i) => has(i.text)) || has(goalsById.get(t.goalId)?.title)
+      || tagsOf(t, tagsById).some((g) => has(g.name)));
+  }
+  return tasks;
+}
+
 export default {
   render(state) {
     const today = todayKey();
@@ -73,16 +88,7 @@ export default {
     if (ui.tag && !tagsById.has(ui.tag)) ui.tag = ''; // 標籤被刪掉了
     const board = ui.mode === 'board';
     // 看板用任務本身（不展開重複任務），清單用今天看得到的那一次
-    let tasks = board ? state.tasks.slice() : listTasks(state.tasks, today);
-    if (ui.prio !== 'all') tasks = tasks.filter((t) => t.priority === ui.prio);
-    if (ui.tag) tasks = tasks.filter((t) => t.tags.includes(ui.tag));
-    if (ui.query) {
-      // 名稱、備註、小清單、所屬目標、標籤都會找
-      const q = ui.query.toLowerCase();
-      const has = (text) => (text || '').toLowerCase().includes(q);
-      tasks = tasks.filter((t) => has(t.title) || has(t.notes) || t.checklist.some((i) => has(i.text)) || has(goalsById.get(t.goalId)?.title)
-        || tagsOf(t, tagsById).some((g) => has(g.name)));
-    }
+    const tasks = applyFilters(board ? state.tasks.slice() : listTasks(state.tasks, today), goalsById, tagsById);
     const filtered = ui.prio !== 'all' || ui.query || ui.tag;
 
     let body;
@@ -91,11 +97,17 @@ export default {
     } else {
       const groups = groupTasks(tasks, today).filter((g) => g.items.length && (g.id !== 'done' || ui.showDone));
       if (groups.length) {
-        body = groups.map((g) => `
+        body = groups.map((g) => {
+          const title = `<h3 class="group-title" id="tg-${g.id}"><span class="group-emoji" aria-hidden="true">${g.emoji}</span>${g.title}<span class="count">${g.items.length}</span></h3>`;
+          const head = g.id === 'nodate'
+            ? `<div class="group-head">${title}<button type="button" class="btn small ghost" data-action="nodate-today">${icon('calendar')}全部排到今天</button></div>`
+            : title;
+          return `
         <section class="task-group group-${g.id}" aria-labelledby="tg-${g.id}">
-          <h3 class="group-title" id="tg-${g.id}"><span class="group-emoji" aria-hidden="true">${g.emoji}</span>${g.title}<span class="count">${g.items.length}</span></h3>
+          ${head}
           ${taskList(g.items, { goalsById, tagsById, today, showDate: g.id !== 'today' })}
-        </section>`).join('');
+        </section>`;
+        }).join('');
       } else if (!state.tasks.length) {
         body = emptyState('還沒有任務。在上面輸入第一件要做的事，按 Enter 就會加入。');
       } else if (filtered) {
@@ -110,7 +122,7 @@ export default {
     <div class="tasks-view${board ? ' is-board' : ''}">
       <form class="add-bar" data-submit="add-task">
         ${quickAddField({ keep: 'tasks-add', placeholder: '新增任務，例如：明天下午3點 家教 #工作', label: '任務名稱' })}
-        <input type="date" name="date" data-keep="tasks-add-date" aria-label="日期（可不填）">
+        <input type="date" name="date" data-keep="tasks-add-date" value="${today}" aria-label="日期（預設今天，清掉就是沒有日期）">
         <select name="priority" data-keep="tasks-add-prio" aria-label="優先度">
           <option value="none">優先度</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option>
         </select>
@@ -139,6 +151,13 @@ export default {
     'task-filter'(el, e, ctx) {
       ui.prio = el.dataset.value;
       ctx.rerender();
+    },
+    'nodate-today'() {
+      const today = todayKey();
+      const list = applyFilters(store.state.tasks).filter((t) => !t.date && !isDone(t) && !isRepeating(t));
+      if (!list.length) return;
+      const before = store.patchTasks(list.map((t) => [t.id, { date: today }]));
+      toast(`已把 ${list.length} 件沒有日期的任務排到今天`, { actionLabel: '復原', onAction: () => store.patchTasks(before) });
     },
     'task-tag'(el, e, ctx) {
       ui.tag = ui.tag === el.dataset.value ? '' : el.dataset.value;
