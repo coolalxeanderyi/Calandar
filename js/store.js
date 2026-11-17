@@ -134,6 +134,13 @@ export const store = {
     this.updateTask(id, { status: done ? 'done' : 'todo', doneAt: done ? Date.now() : null });
   },
 
+  // 直接設定狀態：待辦、進行中、完成
+  setTaskStatus(id, status) {
+    const task = find('tasks', id);
+    if (!task || !['todo', 'doing', 'done'].includes(status) || task.status === status) return;
+    this.updateTask(id, { status, doneAt: status === 'done' ? Date.now() : null });
+  },
+
   // 重複任務的某一次：完成／取消完成（只動那一天）
   toggleOccurrence(id, key) {
     const task = find('tasks', id);

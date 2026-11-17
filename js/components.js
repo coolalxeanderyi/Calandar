@@ -33,12 +33,21 @@ export function emptyState(text, actionHTML = '', mood = 'smile') {
 // 重複任務的某一次會多一個 data-occ（那一天），完成時只勾那一天
 export const occAttr = (t) => (t.occ ? ` data-occ="${esc(t.occ)}"` : '');
 
-export function taskRow(task, { goalsById = new Map(), tagsById = tagMap(), today = todayKey(), showDate = true, rowAttrs = null } = {}) {
+// 任務列旁邊直接切換狀態（重複任務每一次只有完成或沒完成，所以沒有這個）
+const STATUS_OPTS = [['todo', '待辦'], ['doing', '進行中'], ['done', '完成']];
+export function statusSwitch(task) {
+  return `<div class="task-status" role="group" aria-label="狀態：${esc(task.title)}">${STATUS_OPTS
+    .map(([v, label]) => `<button type="button" class="ts-btn ts-${v}${task.status === v ? ' is-on' : ''}" aria-pressed="${task.status === v}" data-action="set-status" data-id="${esc(task.id)}" data-value="${v}">${label}</button>`)
+    .join('')}</div>`;
+}
+
+export function taskRow(task, { goalsById = new Map(), tagsById = tagMap(), today = todayKey(), showDate = true, rowAttrs = null, statusControl = true } = {}) {
   const done = isDone(task);
   const overdue = !done && !task.occ && task.date && task.date < today;
   const goal = task.goalId ? goalsById.get(task.goalId) : null;
   const tags = [];
-  if (task.status === 'doing') tags.push('<span class="tag tag-doing">進行中</span>');
+  const withStatus = statusControl && !task.occ && !task.ended && !isRepeating(task);
+  if (task.status === 'doing' && !withStatus) tags.push('<span class="tag tag-doing">進行中</span>');
   if (showDate && task.date) {
     tags.push(`<span class="tag tag-date${overdue ? ' is-over' : ''}">${relativeDay(task.date, today)}${task.time ? ` ${task.time}` : ''}</span>`);
   } else if (task.time) {
@@ -63,6 +72,7 @@ export function taskRow(task, { goalsById = new Map(), tagsById = tagMap(), toda
       <span class="task-title">${esc(task.title)}</span>
       ${tags.length ? `<span class="task-tags">${tags.join('')}</span>` : ''}
     </button>
+    ${withStatus ? statusSwitch(task) : ''}
   </li>`;
 }
 

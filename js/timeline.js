@@ -87,7 +87,7 @@ function onDown(e) {
     kind = 'move';
     el = block;
   } else if (place) {
-    if (e.target.closest('.check')) return;
+    if (e.target.closest('.check, .task-status')) return; // 勾選、切換狀態的按鈕
     kind = 'place';
     el = place;
   } else {

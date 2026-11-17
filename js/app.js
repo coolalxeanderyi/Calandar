@@ -634,6 +634,18 @@ const GLOBAL_ACTIONS = {
     else store.toggleTask(el.dataset.id);
   },
   'toggle-check-item': (el) => store.toggleChecklistItem(el.dataset.id, el.dataset.item),
+  'set-status': (el) => {
+    const { id, value } = el.dataset;
+    const task = find('tasks', id);
+    if (!task || task.status === value) return;
+    // 畫面重畫之後，焦點放回同一個按鈕（用鍵盤操作時不會跑掉）
+    const sel = `[data-action="set-status"][data-id="${CSS.escape(id)}"][data-value="${value}"]`;
+    const hadFocus = document.activeElement === el;
+    const nth = [...document.querySelectorAll(`.task-status [data-id="${CSS.escape(id)}"]`)].indexOf(el);
+    if (value === 'done') cheerTask(el, id, '');
+    store.setTaskStatus(id, value);
+    if (hadFocus) refocus(sel, Math.floor(Math.max(nth, 0) / 3));
+  },
   'open-task': (el) => {
     const t = find('tasks', el.dataset.id);
     if (t) openTaskModal(t);
@@ -663,6 +675,20 @@ const GLOBAL_ACTIONS = {
   'gcal-pill': () => onGcalPill(),
   'edit-title': (el) => editTitle(el),
 };
+
+// 重畫之後把焦點放回「同一個位置」的按鈕（同一個任務可能同時出現在好幾個清單裡）
+function refocus(sel, nth = 0) {
+  const tryFocus = () => {
+    if (document.activeElement?.matches?.(sel)) return true;
+    const el = document.querySelectorAll(sel)[nth] || document.querySelector(sel);
+    el?.focus({ preventScroll: true });
+    return !!el;
+  };
+  requestAnimationFrame(() => {
+    tryFocus();
+    setTimeout(tryFocus, 150); // 雲端模式的資料晚一點才回來
+  });
+}
 
 function viewHandler(group, name) {
   return currentView?.[group]?.[name];
