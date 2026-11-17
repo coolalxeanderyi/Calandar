@@ -2,10 +2,86 @@
 import { esc, todayKey, weekStartKey, weekKeys, fmtMonthDay, addDays, toKey, WEEKDAYS, weekdayOf } from '../utils.js';
 import { icon, toast } from '../ui.js';
 import { store } from '../store.js';
-import { isDone, expandTasks, activeHabits, isScheduled, isChecked, habitStart } from '../model.js';
+import { isDone, expandTasks, activeHabits, isScheduled, isChecked, habitStart, MOODS } from '../model.js';
 import { taskList, emptyState, goalsMap } from '../components.js';
+import { tagMap, tagVar } from '../tags.js';
 
 const ui = { week: '' };
+
+export function fmtMinutes(min) {
+  if (min < 60) return `${min} 分鐘`;
+  const h = Math.round((min / 60) * 10) / 10;
+  return `${h} 小時`;
+}
+
+// 這週排進時間軸的任務，依標籤加總時間（一個任務有兩個標籤時兩邊都算）
+export function timeByTag(occ, tagsById) {
+  const rows = new Map();
+  let total = 0;
+  let totalDone = 0;
+  for (const t of occ) {
+    if (!t.time) continue;
+    const min = t.duration || 60;
+    const done = isDone(t);
+    total += min;
+    if (done) totalDone += min;
+    const ids = t.tags.filter((id) => tagsById.has(id));
+    for (const id of ids.length ? ids : ['']) {
+      const row = rows.get(id) || { id, min: 0, done: 0, count: 0 };
+      row.min += min;
+      if (done) row.done += min;
+      row.count += 1;
+      rows.set(id, row);
+    }
+  }
+  const list = [...rows.values()].sort((a, b) => b.min - a.min || (a.id === '' ? 1 : b.id === '' ? -1 : 0));
+  return { list, total, totalDone };
+}
+
+function timeSection(occ) {
+  const tagsById = tagMap();
+  const { list, total, totalDone } = timeByTag(occ, tagsById);
+  if (!total) {
+    return emptyState('這週還沒有排時間的任務。在任務裡設定時間，這裡就會算出時間花在哪些標籤。');
+  }
+  const max = Math.max(...list.map((r) => r.min));
+  const MAX_ROWS = 8;
+  const shown = list.slice(0, MAX_ROWS);
+  const rest = list.slice(MAX_ROWS);
+  if (rest.length) {
+    shown.push(rest.reduce((o, r) => ({ ...o, min: o.min + r.min, done: o.done + r.done, count: o.count + r.count }), { id: '*', min: 0, done: 0, count: 0 }));
+  }
+  const rows = shown.map((r) => {
+    const tag = tagsById.get(r.id);
+    const name = tag ? tag.name : r.id === '*' ? `其他 ${rest.length} 個標籤` : '沒有標籤';
+    const color = tag ? tagVar(tag.color) : 'var(--bar-neutral)';
+    const pct = Math.max(2, Math.round((r.min / max) * 100));
+    const tip = `${name}：${fmtMinutes(r.min)}，完成 ${fmtMinutes(r.done)}，${r.count} 個任務`;
+    return `<li class="time-row" title="${esc(tip)}">
+      <span class="time-name"><i class="tag-dot" style="--tc:${color}" aria-hidden="true"></i>${esc(name)}</span>
+      <span class="time-track" aria-hidden="true"><span class="time-bar" style="width:${pct}%;--tc:${color}"></span></span>
+      <span class="time-val">${fmtMinutes(r.min)}<span class="time-sub">${!r.done ? '還沒完成' : r.done === r.min ? '全部完成' : `完成 ${fmtMinutes(r.done)}`}</span></span>
+    </li>`;
+  }).join('');
+  return `<p class="time-total">這週排了 <strong>${fmtMinutes(total)}</strong>${totalDone ? `，完成 ${fmtMinutes(totalDone)}` : ''}</p>
+    <ul class="time-bars" aria-label="依標籤的時間">${rows}</ul>
+    <p class="hint">只算有設定時間的任務。一個任務有兩個標籤時，兩邊都會算進去。</p>`;
+}
+
+function journalSection(keys, today, journal) {
+  const byDay = new Map(journal.map((j) => [j.id, j]));
+  const any = keys.some((k) => byDay.get(k)?.mood || byDay.get(k)?.text);
+  if (!any) return emptyState('在總覽寫下每天的心情和一句話，這週的紀錄就會出現在這裡。');
+  return `<ul class="journal-week">${keys.map((k) => {
+    const j = byDay.get(k);
+    const mood = MOODS.find(([v]) => v === j?.mood);
+    return `<li class="journal-day${k === today ? ' is-today' : ''}${k > today ? ' is-future' : ''}">
+      <span class="jd-day">週${WEEKDAYS[weekdayOf(k)]}<span class="jd-date">${fmtMonthDay(k)}</span></span>
+      <span class="jd-mood"${mood ? ` title="${mood[2]}" aria-label="心情：${mood[2]}"` : ' aria-label="沒有記心情"'}>${mood ? mood[1] : '<span aria-hidden="true">·</span>'}</span>
+      <span class="jd-text">${j?.text ? esc(j.text) : '<span class="jd-empty">沒有寫</span>'}</span>
+    </li>`;
+  }).join('')}</ul>`;
+}
 
 function habitWeek(habit, keys, until) {
   const start = habitStart(habit);
@@ -85,6 +161,14 @@ export default {
             ${open.length || (isFuture && planned.length) ? taskList(isFuture ? planned : open, { goalsById, today }) : emptyState(isFuture ? '這週還沒有排任務。' : '沒有漏掉的任務，很棒！', '', 'happy')}
             ${!isFuture && planned.length ? `<p class="list-label">這週接下來還有 ${planned.length} 件</p>` : ''}
           </div>
+        </section>
+        <section class="block review-time" aria-labelledby="rv-time">
+          <header class="block-head"><h3 id="rv-time" class="tape tape-4"><span aria-hidden="true">⏱️</span>時間花在哪</h3></header>
+          <div class="block-body">${timeSection(occ)}</div>
+        </section>
+        <section class="block review-journal" aria-labelledby="rv-journal">
+          <header class="block-head"><h3 id="rv-journal" class="tape tape-1"><span aria-hidden="true">📝</span>每天的心情</h3></header>
+          <div class="block-body">${journalSection(keys, today, state.journal)}</div>
         </section>
         <section class="block review-habits" aria-labelledby="rv-habits">
           <header class="block-head"><h3 id="rv-habits" class="tape tape-2"><span aria-hidden="true">🌱</span>習慣</h3></header>

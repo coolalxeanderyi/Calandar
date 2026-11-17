@@ -7,7 +7,9 @@ import { createLocalBackend, hasLocalData, localItems, readLocalData } from './b
 import { createFirebase } from './backend-firebase.js';
 import { toStored, normalizeSettings, usesMascot, isDone, isScheduled, listTasks } from './model.js';
 import { mascot } from './mascot.js';
-import { openTaskModal, openGoalModal, openHabitModal, openEventModal } from './components.js';
+import { openTaskModal, openGoalModal, openHabitModal, openEventModal, updateQuickPreview } from './components.js';
+import { moveTo } from './views/tasks.js';
+import { initTimeline, deferRender } from './timeline.js';
 import { openSettings, openCoverPicker, openThemePicker } from './settings.js';
 import { applyAppearance, cachedPalette, savedMode, getTheme, tintFor, onSystemThemeChange } from './themes.js';
 import { initGcal, gcalState, onGcalChange, connect as gcalConnect, run as gcalRun, hasToken as gcalHasToken, forgetToken as gcalForgetToken } from './gcal.js';
@@ -450,6 +452,7 @@ function focusPending() {
 function renderView() {
   const el = document.getElementById('view');
   if (!el) return;
+  if (deferRender()) return; // 正在拖曳時間軸上的任務：放開之後再畫
   const { name, params } = parseRoute();
   const view = VIEWS[name];
   if (location.hash !== currentHash || view !== currentView) {
@@ -483,6 +486,7 @@ function renderView() {
   for (const input of el.querySelectorAll('[data-keep]')) {
     if (drafts.has(input.dataset.keep)) input.value = drafts.get(input.dataset.keep);
   }
+  for (const input of el.querySelectorAll('[data-quick]')) if (input.value) updateQuickPreview(input);
   focusPending();
   if (keep) {
     const again = el.querySelector(`[data-keep="${keep}"]`);
@@ -690,6 +694,7 @@ function wireEvents() {
   document.addEventListener('input', (e) => {
     const t = e.target;
     if (t.dataset?.keep) drafts.set(t.dataset.keep, t.value);
+    if (t.dataset && 'quick' in t.dataset) updateQuickPreview(t);
     if (t.dataset?.input) viewHandler('input', t.dataset.input)?.(t, e, ctx());
   });
 
@@ -732,7 +737,7 @@ function wireEvents() {
   });
   document.addEventListener('dragover', (e) => {
     if (!dragId) return;
-    const cell = e.target.closest?.('[data-drop-date]');
+    const cell = e.target.closest?.('[data-drop-date], [data-drop-status]');
     if (!cell) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -740,6 +745,14 @@ function wireEvents() {
     cell.classList.add('is-drop');
   });
   document.addEventListener('drop', (e) => {
+    const col = e.target.closest?.('[data-drop-status]');
+    if (col && dragId) {
+      // 看板：拖到別的欄位＝換狀態
+      e.preventDefault();
+      moveTo(dragId, col.dataset.dropStatus);
+      endDrag();
+      return;
+    }
     const cell = e.target.closest?.('[data-drop-date]');
     if (!cell || !dragId) return;
     e.preventDefault();
@@ -752,6 +765,8 @@ function wireEvents() {
     endDrag();
   });
   document.addEventListener('dragend', endDrag);
+
+  initTimeline({ rerender: renderView });
 
   window.addEventListener('hashchange', onRoute);
   onSystemThemeChange(refreshLook);

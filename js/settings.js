@@ -12,6 +12,8 @@ import {
   bridgeOn, pingBridge, refreshInfo, checkScriptUrl, newKey, externalState, pickerCalendars, onExternalChange, reloadExternal,
 } from './gsync.js';
 import { scriptCode, SCRIPT_VERSION } from './gas-code.js';
+import { backupNow, backupState, onBackupChange, BACKUP_VERSION } from './gsync.js';
+import { allTags, tagVar, colorName, ensureTags, renameTag, cycleTagColor, deleteTag, MAX_TAGS } from './tags.js';
 
 const ICONS = ['🌸', '📒', '🌈', '🍓', '🧋', '⭐', '🍀'];
 const MODES = [['auto', '跟著系統'], ['light', '淺色'], ['dark', '深色']];
@@ -31,6 +33,7 @@ export function openSettings(env, { focus } = {}) {
   let stopGcal = () => {};
   let stopStore = () => {};
   let stopExternal = () => {};
+  let stopBackup = () => {};
 
   openModal({
     title: '設定',
@@ -51,6 +54,8 @@ export function openSettings(env, { focus } = {}) {
         <fieldset class="field"><legend>一週從哪天開始</legend>${segRadio('weekStart', [['1', '星期一'], ['0', '星期日']], s.weekStart, '一週從哪天開始')}</fieldset>
         <div class="field"><span class="label">封面</span><button type="button" class="btn" data-cover>${icon('image')}換封面</button></div>
       </section>
+      <section class="settings-sec" aria-labelledby="st-tags" data-tags-sec>${tagsSection()}</section>
+      <section class="settings-sec" aria-labelledby="st-tpl" data-tpl-sec>${templatesSection()}</section>
       <section class="settings-sec" aria-labelledby="st-gcal" data-gcal-sec>${gcalSection(env)}</section>
       <section class="settings-sec" aria-labelledby="st-iphone">${iphoneSection()}</section>
       <section class="settings-sec" aria-labelledby="st-backup">
@@ -61,6 +66,7 @@ export function openSettings(env, { focus } = {}) {
           <button type="button" class="btn" data-import>${icon('upload')}匯入備份</button>
           <input type="file" accept="application/json,.json" data-import-file hidden>
         </div>
+        <div class="backup-drive" data-backup-box>${backupBox()}</div>
       </section>
       <section class="settings-sec" aria-labelledby="st-account">
         <h3 class="sub-title" id="st-account">帳號</h3>
@@ -89,9 +95,35 @@ export function openSettings(env, { focus } = {}) {
         const last = sec.querySelector('[data-gcal-last]');
         if (last) last.textContent = lastSyncText();
       };
+      // 標籤、範本、雲端硬碟備份：內容變了才重畫那一段
+      const parts = [['[data-tags-sec]', tagsSection], ['[data-tpl-sec]', templatesSection], ['[data-backup-box]', backupBox]];
+      const partHTML = new Map(parts.map(([sel, fn]) => [sel, fn()]));
+      const refreshParts = () => {
+        for (const [sel, fn] of parts) {
+          const box = form.querySelector(sel);
+          const html = fn();
+          if (!box || html === partHTML.get(sel)) continue;
+          const active = document.activeElement;
+          // 正在改標籤名稱時先不要重畫，免得打到一半的字不見（改完離開欄位後會再更新）
+          if (box.contains(active) && active.matches('[data-tag-rename]')) continue;
+          partHTML.set(sel, html);
+          const keep = box.contains(active) && active.matches('[data-tag-create]') ? active.value : null;
+          box.innerHTML = html;
+          if (keep !== null) {
+            const input = box.querySelector('[data-tag-create]');
+            input.value = keep;
+            input.focus({ preventScroll: true });
+          }
+        }
+      };
+      const refreshAll = () => {
+        refreshGcal();
+        refreshParts();
+      };
       stopGcal = onGcalChange(refreshGcal);
-      stopStore = store.subscribe(refreshGcal);
-      stopExternal = onExternalChange(refreshGcal);
+      stopStore = store.subscribe(refreshAll);
+      stopExternal = onExternalChange(refreshAll);
+      stopBackup = onBackupChange(refreshParts);
       if (bridgeOn()) refreshInfo({ force: true }); // 順便更新日曆清單、檢查 Apps Script 的版本
 
       if (focus === 'gcal') {
@@ -127,6 +159,58 @@ export function openSettings(env, { focus } = {}) {
           e.preventDefault();
           // 「連接」一定要問 Google；「立即同步」在通行證還有效時直接同步
           env.syncCalendar({ askAgain: !!e.target.closest('[data-gcal-connect]') });
+          return;
+        }
+        // ---- 標籤 ----
+        if (e.target.closest('[data-tag-create-btn]')) {
+          e.preventDefault();
+          createTagFrom(form);
+          return;
+        }
+        const colorBtn = e.target.closest('[data-tag-color]');
+        if (colorBtn) {
+          e.preventDefault();
+          const tag = cycleTagColor(colorBtn.dataset.tagColor);
+          if (tag) toast(`「${tag.name}」換成${colorName(tag.color)}色`);
+          return;
+        }
+        const delTag = e.target.closest('[data-tag-delete]');
+        if (delTag) {
+          e.preventDefault();
+          const tag = allTags().find((g) => g.id === delTag.dataset.tagDelete);
+          if (!tag) return;
+          const n = store.state.tasks.filter((t) => t.tags.includes(tag.id)).length;
+          const ok = await confirmDialog(n ? `有 ${n} 個任務用了這個標籤。任務本身不會被刪掉，只會拿掉這個標籤。` : '這個標籤還沒有任務在用。', {
+            title: `刪除標籤「${tag.name}」？`,
+            confirmLabel: '刪除標籤',
+            danger: true,
+          });
+          if (!ok) return;
+          deleteTag(tag.id);
+          toast(`已刪除標籤「${tag.name}」`);
+          return;
+        }
+        // ---- 範本 ----
+        const delTpl = e.target.closest('[data-tpl-delete]');
+        if (delTpl) {
+          e.preventDefault();
+          const tpl = store.state.settings.templates.find((x) => x.id === delTpl.dataset.tplDelete);
+          if (!tpl) return;
+          const ok = await confirmDialog('用這個範本建立過的任務不會受影響。', { title: `刪除範本「${tpl.name}」？`, confirmLabel: '刪除範本', danger: true });
+          if (!ok) return;
+          store.saveSettings({ templates: store.state.settings.templates.filter((x) => x.id !== tpl.id) });
+          toast(`已刪除範本「${tpl.name}」`);
+          return;
+        }
+        // ---- 雲端硬碟備份 ----
+        if (e.target.closest('[data-backup-now]')) {
+          e.preventDefault();
+          try {
+            const r = await backupNow();
+            if (r) toast(`已備份到 Google 雲端硬碟（${r.file}）`);
+          } catch (err) {
+            toast(backupState().error || err.message, { tone: 'error', duration: 8000 });
+          }
           return;
         }
         if (e.target.closest('[data-gs-copy]')) {
@@ -191,6 +275,24 @@ export function openSettings(env, { focus } = {}) {
       });
       // Google 日曆：勾選要顯示的日曆、開關「把任務放進 Google 日曆」
       form.addEventListener('change', (e) => {
+        if (e.target.matches('[data-tag-rename]')) {
+          const id = e.target.closest('[data-tag-id]').dataset.tagId;
+          const old = allTags().find((g) => g.id === id);
+          if (!old || e.target.value.trim() === old.name) {
+            setTimeout(refreshParts, 0); // 名稱沒變：補上剛剛延後的更新
+            return;
+          }
+          if (renameTag(id, e.target.value)) toast(`已改名為「${e.target.value.trim()}」`);
+          else {
+            toast(e.target.value.trim() ? '已經有同名的標籤了' : '標籤名稱不能空白', { tone: 'error' });
+            e.target.value = old.name;
+          }
+          return;
+        }
+        if (e.target.matches('[data-backup-on]')) {
+          store.saveSettings({ backupOn: e.target.checked });
+          return;
+        }
         if (e.target.matches('[data-gs-cal]')) {
           const ids = [...form.querySelectorAll('[data-gs-cal]:checked')].map((el) => el.value);
           store.saveSettings({ gsPick: true, gsCals: ids });
@@ -202,8 +304,18 @@ export function openSettings(env, { focus } = {}) {
       form.addEventListener('input', (e) => {
         if (e.target.matches('[data-gs-url]')) urlDraft = e.target.value;
       });
-      // 在網址欄按 Enter 是「連接」，不是儲存整個設定
+      // 在網址欄按 Enter 是「連接」，不是儲存整個設定；在標籤欄按 Enter 是新增或改名
       form.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing && e.target.matches('[data-tag-create]')) {
+          e.preventDefault();
+          createTagFrom(form);
+          return;
+        }
+        if (e.key === 'Enter' && !e.isComposing && e.target.matches('[data-tag-rename]')) {
+          e.preventDefault();
+          e.target.blur();
+          return;
+        }
         if (e.key === 'Enter' && e.target.matches('[data-gs-url]')) {
           e.preventDefault();
           connectBridge(form);
@@ -240,6 +352,7 @@ export function openSettings(env, { focus } = {}) {
       stopGcal();
       stopStore();
       stopExternal();
+      stopBackup();
     },
     onSubmit(form) {
       const f = form.elements;
@@ -259,6 +372,73 @@ function themeCurrent(paletteId) {
   const t = getTheme(paletteId);
   return `<span class="theme-now"><span class="pill-emoji" aria-hidden="true">${t.emoji}</span>${esc(t.name)}</span>
     <button type="button" class="btn small" data-themes>換主題</button>`;
+}
+
+// ---------- 標籤 ----------
+function tagsSection() {
+  const tags = allTags();
+  const counts = new Map();
+  for (const t of store.state.tasks) for (const id of t.tags) counts.set(id, (counts.get(id) || 0) + 1);
+  return `<h3 class="sub-title" id="st-tags">標籤</h3>
+    <p class="hint">幫任務分類，例如「家教」「拍片」「學校」。在任務頁和行事曆可以用標籤篩選。點左邊的圓點可以換顏色，名稱直接改就好。</p>
+    ${tags.length ? `<ul class="tag-admin">${tags.map((g) => `
+      <li class="tag-admin-row" data-tag-id="${esc(g.id)}">
+        <button type="button" class="tag-swatch" style="--tc:${tagVar(g.color)}" data-tag-color="${esc(g.id)}" aria-label="換「${esc(g.name)}」的顏色（現在是${colorName(g.color)}色）"></button>
+        <input class="tag-name-input" value="${esc(g.name)}" maxlength="20" autocomplete="off" data-tag-rename aria-label="標籤名稱：${esc(g.name)}">
+        <span class="tag-count">${counts.get(g.id) || 0} 個任務</span>
+        <button type="button" class="icon-btn small" data-tag-delete="${esc(g.id)}" aria-label="刪除標籤「${esc(g.name)}」">${icon('trash')}</button>
+      </li>`).join('')}</ul>` : ''}
+    ${tags.length < MAX_TAGS ? `<div class="inline-add">
+      <input data-tag-create placeholder="新標籤的名稱，例如：家教" maxlength="20" autocomplete="off" aria-label="新標籤的名稱">
+      <button type="button" class="btn small" data-tag-create-btn>${icon('plus')}新增標籤</button>
+    </div>` : `<p class="hint">標籤最多 ${MAX_TAGS} 個。</p>`}`;
+}
+
+function createTagFrom(form) {
+  const input = form.querySelector('[data-tag-create]');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) {
+    input.focus();
+    return;
+  }
+  const { created } = ensureTags([name]);
+  toast(created.length ? `已新增標籤「${created[0].name}」` : '已經有這個標籤了');
+  input.value = '';
+  input.focus();
+}
+
+// ---------- 任務範本 ----------
+function templatesSection() {
+  const list = store.state.settings.templates;
+  return `<h3 class="sub-title" id="st-tpl">任務範本</h3>
+    <p class="hint">把常用的步驟存起來，例如拍片流程。在新增或編輯任務的視窗按「存成範本」就會出現在這裡；新增任務時可以「從範本建立」。</p>
+    ${list.length ? `<ul class="tpl-admin">${list.map((x) => `
+      <li class="tpl-admin-row">
+        <span class="tpl-name">${esc(x.name)}</span>
+        <span class="tpl-meta">${x.checklist.length ? `${x.checklist.length} 個步驟` : '沒有小清單'}</span>
+        <button type="button" class="icon-btn small" data-tpl-delete="${esc(x.id)}" aria-label="刪除範本「${esc(x.name)}」">${icon('trash')}</button>
+      </li>`).join('')}</ul>` : '<p class="settings-text">還沒有範本。</p>'}`;
+}
+
+// ---------- 雲端硬碟備份 ----------
+function backupBox() {
+  const s = store.state.settings;
+  if (!bridgeOn()) {
+    return '<p class="hint">連接 Google 日曆之後（設定裡的「Google 日曆」），計劃版每天會自動備份一份到你的 Google 雲端硬碟。</p>';
+  }
+  const ext = externalState();
+  if (ext.version && ext.version < BACKUP_VERSION) {
+    return '<p class="hint">要自動備份到 Google 雲端硬碟，請先照「Google 日曆」裡「更新 Apps Script」的步驟換成新的程式碼。</p>';
+  }
+  const st = backupState();
+  const last = s.backupDay ? `上次備份：${s.backupDay === todayKey() ? '今天' : s.backupDay}` : '還沒備份過';
+  return `<label class="gs-toggle"><input type="checkbox" data-backup-on${s.backupOn ? ' checked' : ''}><span>每天自動備份到 Google 雲端硬碟（「計劃版備份」資料夾，留最近 30 天）</span></label>
+    <p class="hint" role="status">${st.busy ? '正在備份…' : esc(st.error || last)}</p>
+    <div class="btn-row">
+      <button type="button" class="btn small" data-backup-now${st.busy ? ' disabled' : ''}>${icon('upload')}立即備份</button>
+      ${s.backupUrl ? `<a class="btn small ghost" href="${esc(s.backupUrl)}" target="_blank" rel="noopener">${icon('external')}打開備份資料夾</a>` : ''}
+    </div>`;
 }
 
 // ---------- 放到 iPhone 主畫面 ----------
@@ -436,6 +616,7 @@ function bridgeSetup() {
         </li>
         <li><span class="gs-step-title">授權</span>
           <p>按「授予存取權」（Authorize access），選你的 Google 帳號。看到「Google 尚未驗證這個應用程式」時，按「進階」（Advanced）→「前往 計劃版同步（不安全）」→「允許」（Allow）。這是你自己剛貼上的程式，所以沒關係。</p>
+          <p class="hint">權限裡會有 Google 日曆和 Google 雲端硬碟。雲端硬碟是用來每天備份的，程式只會在「計劃版備份」資料夾裡放備份檔。</p>
         </li>
         <li><span class="gs-step-title">貼上網址</span>
           <p>複製「網頁應用程式」下面的網址（開頭是 https://script.google.com/macros/s/，結尾是 /exec），貼在這裡：</p>
@@ -481,9 +662,10 @@ function bridgeStatus() {
       <ol>
         <li>重新複製程式碼：${copyButtons}</li>
         <li>打開 <a href="https://script.google.com/home" target="_blank" rel="noopener">Apps Script</a>，點「計劃版同步」這個專案，把裡面的程式全部換成剛複製的，按「儲存」💾。</li>
+        <li>在上方的函式選單選 test，按「執行」（Run），照畫面允許權限。新版多了 Google 雲端硬碟的權限，是用來每天備份的，程式只會在「計劃版備份」資料夾裡放備份檔。</li>
         <li>右上角「部署」→「管理部署作業」（Manage deployments）→ 按鉛筆圖示（編輯）→「版本」選「新版本」（New version）→「部署」。網址不會變，不用重新貼。</li>
       </ol>
-      <p class="hint">如果顯示「需要再授權一次」：在 Apps Script 上方的函式選單選 test，按「執行」（Run），允許權限就好。</p>
+      <p class="hint">如果顯示「需要再授權一次」：一樣在函式選單選 test，按「執行」，允許權限就好。</p>
     </details>`;
 }
 

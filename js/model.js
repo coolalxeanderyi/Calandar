@@ -12,6 +12,33 @@ export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const COVER_IDS = COVER_STYLES.map((c) => c.id);
 const PALETTE_IDS = THEME_IDS;
 
+// 標籤的八種顏色。順序固定：新標籤依序拿下一個顏色，相鄰的顏色色盲也分得出來。
+// 實際顏色在 style.css 的 --tag-*（淺色、深色各一組）。
+export const TAG_COLORS = [
+  { id: 'blue', name: '藍' }, { id: 'orange', name: '橘' }, { id: 'aqua', name: '青' }, { id: 'yellow', name: '黃' },
+  { id: 'magenta', name: '粉' }, { id: 'green', name: '綠' }, { id: 'violet', name: '紫' }, { id: 'red', name: '紅' },
+];
+export const TAG_COLOR_IDS = TAG_COLORS.map((c) => c.id);
+export const MAX_TAGS = 40;
+export const MAX_TASK_TAGS = 8;
+
+// 提醒：-1＝不提醒，null＝預設（有時間的任務前 10 分鐘，全天的不提醒）
+export const REMIND_TIMED = [[-1, '不提醒'], [0, '準時'], [5, '前 5 分鐘'], [10, '前 10 分鐘'], [30, '前 30 分鐘'], [60, '前 1 小時'], [1440, '前一天']];
+export const REMIND_ALLDAY = [[-1, '不提醒'], [180, '前一天晚上 9 點']];
+const REMINDS = [-1, 0, 5, 10, 30, 60, 180, 1440];
+export const remindVal = (v) => (REMINDS.includes(v) ? v : null);
+// 實際要提醒幾分鐘前（沒有提醒回傳 null）
+export function remindMinutes(t) {
+  if (t.time) {
+    const v = t.remind === null || t.remind === undefined || t.remind === 180 ? 10 : t.remind;
+    return v < 0 ? null : v;
+  }
+  return t.remind === 180 ? 180 : null;
+}
+
+// 每天的心情：1～5
+export const MOODS = [[1, '😞', '很糟'], [2, '😕', '不太好'], [3, '😐', '普通'], [4, '🙂', '不錯'], [5, '😄', '很棒']];
+
 // 頁面圖示：沒有設定、或是第一版的預設日曆圖示時，改用吉祥物
 export const usesMascot = (icon) => !icon || icon === '🗓️';
 
@@ -36,6 +63,13 @@ export const DEFAULT_SETTINGS = {
   gsKey: '',
   gsPick: false, // false＝顯示 Google 日曆裡有勾選的日曆
   gsCals: [],
+  // 自己建立的標籤 [{ id, name, color }] 和任務範本
+  tags: [],
+  templates: [],
+  // 每天自動備份到 Google 雲端硬碟（透過 Apps Script）
+  backupOn: true,
+  backupDay: '',
+  backupUrl: '',
 };
 
 // 重複：none（不重複）、daily、weekly（repeatDays 是星期幾，0＝星期日）、monthly（每月同一天）
@@ -46,8 +80,9 @@ export const DURATIONS = [[15, '15 分鐘'], [30, '30 分鐘'], [45, '45 分鐘'
 const DEFAULTS = {
   tasks: () => ({
     title: '', notes: '', date: '', time: '', duration: 60, priority: 'none', status: 'todo', goalId: '',
-    repeat: 'none', repeatDays: [], repeatUntil: '', doneOn: {}, checklist: [], doneAt: null, createdAt: 0, updatedAt: 0,
+    repeat: 'none', repeatDays: [], repeatUntil: '', doneOn: {}, checklist: [], tags: [], remind: null, doneAt: null, createdAt: 0, updatedAt: 0,
   }),
+  journal: () => ({ date: '', mood: 0, text: '', createdAt: 0, updatedAt: 0 }),
   reviews: () => ({ week: '', wins: '', improve: '', focus: ['', '', ''], createdAt: 0, updatedAt: 0 }),
   goals: () => ({ title: '', why: '', area: '', emoji: '🎯', deadline: '', status: 'active', progressMode: 'tasks', progress: 0, doneAt: null, createdAt: 0, updatedAt: 0 }),
   habits: () => ({ name: '', emoji: '✅', days: [...ALL_DAYS], log: {}, archived: false, order: 0, createdAt: 0, updatedAt: 0 }),
@@ -71,6 +106,47 @@ function dateMap(v) {
   if (v && typeof v === 'object') for (const [k, on] of Object.entries(v)) if (isDateKey(k) && on) out[k] = true;
   return out;
 }
+const ID_RE = /^[\w-]{1,24}$/;
+function idList(v, max = MAX_TASK_TAGS) {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((id) => typeof id === 'string' && ID_RE.test(id)))].slice(0, max);
+}
+function tagList(v) {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const t of v) {
+    if (!t || typeof t !== 'object' || !ID_RE.test(t.id) || seen.has(t.id)) continue;
+    const name = str(t.name, 20).trim();
+    if (!name) continue;
+    seen.add(t.id);
+    out.push({ id: t.id, name, color: TAG_COLOR_IDS.includes(t.color) ? t.color : 'blue' });
+  }
+  return out.slice(0, MAX_TAGS);
+}
+function templateList(v) {
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  for (const t of v) {
+    if (!t || typeof t !== 'object' || !ID_RE.test(t.id)) continue;
+    const name = str(t.name, 40).trim();
+    if (!name) continue;
+    out.push({
+      id: t.id,
+      name,
+      title: str(t.title, 300),
+      notes: str(t.notes, 2000),
+      checklist: Array.isArray(t.checklist) ? t.checklist.filter((x) => typeof x === 'string' && x.trim()).slice(0, 50).map((x) => x.slice(0, 200)) : [],
+      tags: idList(t.tags),
+      time: time(t.time),
+      duration: clamp(Math.round(num(t.duration, 60)), 5, 1440),
+      priority: oneOf(t.priority, ENUMS.priority, 'none'),
+      remind: remindVal(t.remind),
+    });
+  }
+  return out.slice(0, 30);
+}
+
 function checklist(v) {
   if (!Array.isArray(v)) return [];
   return v
@@ -98,7 +174,19 @@ export function normalize(col, raw = {}) {
       repeatUntil: date(d.repeatUntil),
       doneOn: dateMap(d.doneOn),
       checklist: checklist(d.checklist),
+      tags: idList(d.tags),
+      remind: remindVal(d.remind),
       doneAt: typeof d.doneAt === 'number' ? d.doneAt : null,
+      createdAt: num(d.createdAt),
+      updatedAt: num(d.updatedAt),
+    };
+  }
+  if (col === 'journal') {
+    return {
+      id: raw.id,
+      date: date(d.date) || date(raw.id),
+      mood: clamp(Math.round(num(d.mood)), 0, 5),
+      text: str(d.text, 300),
       createdAt: num(d.createdAt),
       updatedAt: num(d.updatedAt),
     };
@@ -172,6 +260,11 @@ export function normalizeSettings(raw = {}) {
     gsKey: /^[a-z0-9]{16,64}$/.test(str(s.gsKey, 64)) ? str(s.gsKey, 64) : '',
     gsPick: s.gsPick === true,
     gsCals: Array.isArray(s.gsCals) ? s.gsCals.filter((id) => typeof id === 'string' && id && id.length <= 300).slice(0, 50) : [],
+    tags: tagList(s.tags),
+    templates: templateList(s.templates),
+    backupOn: s.backupOn !== false,
+    backupDay: date(s.backupDay),
+    backupUrl: /^https:\/\/drive\.google\.com\//.test(str(s.backupUrl, 300)) ? str(s.backupUrl, 300) : '',
   };
 }
 

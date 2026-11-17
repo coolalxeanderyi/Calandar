@@ -3,7 +3,7 @@
 import { uid, DELETE } from './utils.js';
 import { normalize, normalizeSettings, newDoc, toStored, isDone, DEFAULT_SETTINGS } from './model.js';
 
-export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews'];
+export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal'];
 
 const state = {
   status: 'idle', // idle | loading | ready
@@ -14,6 +14,7 @@ const state = {
   goals: [],
   habits: [],
   reviews: [],
+  journal: [], // 每天的心情和一句話（文件 ID 是日期）
   settings: { ...DEFAULT_SETTINGS },
 };
 
@@ -217,6 +218,25 @@ export const store = {
     else run(() => backend.set('reviews', week, newDoc('reviews', { week, ...data })));
   },
 
+  // ---- 每天的心情和一句話（文件 ID 是日期，例如 2026-11-17） ----
+  saveJournal(day, data) {
+    const exists = state.journal.some((j) => j.id === day);
+    if (exists) run(() => backend.patch('journal', day, { ...data, updatedAt: Date.now() }));
+    else run(() => backend.set('journal', day, newDoc('journal', { date: day, ...data })));
+  },
+
+  // 一次改好幾個任務（例如把逾期的全部移到今天），回傳原本的值，給「復原」用
+  patchTasks(changes) {
+    const before = [];
+    for (const [id, patch] of changes) {
+      const task = find('tasks', id);
+      if (!task) continue;
+      before.push([id, Object.fromEntries(Object.keys(patch).map((k) => [k, task[k]]))]);
+      this.updateTask(id, patch);
+    }
+    return before;
+  },
+
   // ---- 設定 ----
   saveSettings(patch) {
     run(() => backend.setSettings(patch));
@@ -235,6 +255,7 @@ export const store = {
       goals: state.goals,
       habits: state.habits,
       reviews: state.reviews,
+      journal: state.journal,
     };
   },
 
@@ -253,8 +274,8 @@ export const store = {
     }
     await backend.setMany(items);
     if (json.settings && typeof json.settings === 'object') {
-      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart } = normalizeSettings(json.settings);
-      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart }));
+      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates } = normalizeSettings(json.settings);
+      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates }));
     }
     return items.length;
   },

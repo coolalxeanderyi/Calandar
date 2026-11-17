@@ -8,8 +8,11 @@ import { store } from './store.js';
 import { mascot } from './mascot.js';
 import {
   PRIORITY_LABEL, goalProgress, isDone, AREA_SUGGESTIONS, ALL_DAYS, isChecked, compareTasks,
-  REPEAT_LABEL, DURATIONS, repeatLabel, checklistProgress, isRepeating,
+  REPEAT_LABEL, DURATIONS, repeatLabel, checklistProgress, isRepeating, REMIND_TIMED, REMIND_ALLDAY, MAX_TASK_TAGS,
 } from './model.js';
+import { allTags, tagMap, tagsOf, tagChip, tagVar, ensureTags } from './tags.js';
+import { parseQuick, quickLabels } from './quickadd.js';
+import { bridgeOn } from './gsync.js';
 
 // ---------- 小元件 ----------
 export function segRadio(name, options, value, label) {
@@ -30,7 +33,7 @@ export function emptyState(text, actionHTML = '', mood = 'smile') {
 // 重複任務的某一次會多一個 data-occ（那一天），完成時只勾那一天
 export const occAttr = (t) => (t.occ ? ` data-occ="${esc(t.occ)}"` : '');
 
-export function taskRow(task, { goalsById = new Map(), today = todayKey(), showDate = true } = {}) {
+export function taskRow(task, { goalsById = new Map(), tagsById = tagMap(), today = todayKey(), showDate = true, rowAttrs = null } = {}) {
   const done = isDone(task);
   const overdue = !done && !task.occ && task.date && task.date < today;
   const goal = task.goalId ? goalsById.get(task.goalId) : null;
@@ -48,12 +51,13 @@ export function taskRow(task, { goalsById = new Map(), today = todayKey(), showD
   const list = checklistProgress(task);
   if (list.total) tags.push(`<span class="tag tag-check${list.done === list.total ? ' is-full' : ''}">☑ ${list.done}/${list.total}</span>`);
   if (goal) tags.push(`<span class="tag tag-goal">${esc(goal.emoji)} ${esc(goal.title)}</span>`);
+  for (const tag of tagsOf(task, tagsById)) tags.push(tagChip(tag));
   if (task.notes) tags.push('<span class="tag tag-note" title="有備註">備註</span>');
 
   const check = task.ended
     ? `<span class="check is-ended" aria-hidden="true">${icon('check')}</span>`
     : `<button type="button" class="check" role="checkbox" aria-checked="${done}" data-action="toggle-task" data-id="${esc(task.id)}"${occAttr(task)} aria-label="${done ? '標記為未完成' : '完成'}：${esc(task.title)}${task.occ ? `（${fmtMonthDay(task.occ)}）` : ''}">${icon('check')}</button>`;
-  return `<li class="task prio-${task.priority}${done ? ' is-done' : ''}" data-id="${esc(task.id)}">
+  return `<li class="task prio-${task.priority}${done ? ' is-done' : ''}" data-id="${esc(task.id)}"${rowAttrs ? rowAttrs(task) : ''}>
     ${check}
     <button type="button" class="task-main" data-action="open-task" data-id="${esc(task.id)}"${occAttr(task)}>
       <span class="task-title">${esc(task.title)}</span>
@@ -118,7 +122,8 @@ export function openEventModal(ev) {
   });
 }
 
-export function taskList(tasks, opts) {
+export function taskList(tasks, opts = {}) {
+  opts = { tagsById: tagMap(), ...opts };
   return `<ul class="task-list">${tasks.map((t) => taskRow(t, opts)).join('')}</ul>`;
 }
 
@@ -174,6 +179,38 @@ function bindEmojiPicks(form) {
   });
 }
 
+// ---------- 快速新增（看得懂「明天下午3點 家教 #工作」） ----------
+export function quickAddField({ keep, placeholder, label }) {
+  return `<input name="title" data-keep="${keep}" data-quick placeholder="${esc(placeholder)}" autocomplete="off" aria-label="${esc(label)}" aria-describedby="${keep}-preview" maxlength="300">`;
+}
+export const quickPreview = (keep) => `<p class="qa-preview" id="${keep}-preview" data-qa-preview aria-live="polite"></p>`;
+
+export function updateQuickPreview(input) {
+  const box = input.form?.querySelector('[data-qa-preview]');
+  if (!box) return;
+  const today = todayKey();
+  const p = parseQuick(input.value, { today, weekStart: store.state.settings.weekStart });
+  const parts = input.value.trim() ? quickLabels(p, today) : [];
+  box.innerHTML = parts.length ? `<span class="qa-label">會加上</span>${parts.map((x) => `<span class="qa-part">${esc(x)}</span>`).join('')}` : '';
+}
+
+// 回傳 { data } 或 { error }
+export function addQuickTask(text, { date = '', priority = 'none' } = {}) {
+  const today = todayKey();
+  const p = parseQuick(text, { today, weekStart: store.state.settings.weekStart });
+  if (!p.title) return { error: '請輸入任務名稱' };
+  const { ids, created } = ensureTags(p.tags);
+  const data = { title: p.title, date: p.date || date, time: p.time, priority: p.priority || priority, tags: ids };
+  if (p.duration) data.duration = Math.min(Math.max(p.duration, 5), 24 * 60);
+  store.addTask(data);
+  const notes = [];
+  if (data.date && data.date !== date) notes.push(`${relativeDay(data.date, today)}${data.time ? ` ${data.time}` : ''}`);
+  else if (data.time) notes.push(data.time);
+  if (created.length) notes.push(`新標籤 ${created.map((g) => `#${g.name}`).join(' ')}`);
+  if (notes.length) toast(`已新增「${data.title}」：${notes.join('，')}`);
+  return { data };
+}
+
 // ---------- 任務 ----------
 export function deleteTaskWithUndo(id) {
   const doc = store.removeTask(id);
@@ -186,14 +223,62 @@ const checkItem = (i) => `<li class="check-item" data-item="${esc(i.id)}">
     <button type="button" class="icon-btn small" data-check-remove aria-label="刪除這一項">${icon('x')}</button>
   </li>`;
 
+// ---- 任務視窗裡的標籤、提醒、範本 ----
+const tagPick = (tag, checked) => `<label class="tag-pick" style="--tc:${tagVar(tag.color)}"><input type="checkbox" name="tags" value="${esc(tag.id)}"${checked ? ' checked' : ''}><span><i class="tag-dot" aria-hidden="true"></i>${esc(tag.name)}</span></label>`;
+
+function remindOptions(timed, value) {
+  const list = timed ? REMIND_TIMED : REMIND_ALLDAY;
+  const v = value === null || value === undefined ? 'default' : String(value);
+  const known = list.some(([n]) => String(n) === v);
+  return `<option value="default"${known ? '' : ' selected'}>${timed ? '預設（前 10 分鐘）' : '預設（不提醒）'}</option>${list
+    .map(([n, label]) => `<option value="${n}"${String(n) === v ? ' selected' : ''}>${label}</option>`).join('')}`;
+}
+
+// 存成範本：用一個小視窗問名稱
+function saveAsTemplate(data) {
+  const templates = store.state.settings.templates;
+  openModal({
+    title: '存成範本',
+    size: 'sm',
+    submitLabel: '儲存範本',
+    body: `<div class="field"><label for="tpl-name">範本名稱</label><input id="tpl-name" name="name" maxlength="40" value="${esc(data.title)}" autocomplete="off" autofocus></div>
+      <p class="hint">之後新增任務時，在「從範本建立」選它，名稱、小清單、標籤、時長、優先度和提醒都會幫你填好。同名的範本會被更新。</p>`,
+    onSubmit(form) {
+      const name = form.elements.name.value.trim().slice(0, 40);
+      if (!name) {
+        fieldError(form, 'name', '請輸入範本名稱');
+        return false;
+      }
+      const list = [...templates];
+      const at = list.findIndex((x) => x.name === name);
+      if (at < 0 && list.length >= 30) {
+        fieldError(form, 'name', '範本最多 30 個，請先到設定刪掉用不到的');
+        return false;
+      }
+      const tpl = { id: at >= 0 ? list[at].id : `p${uid().slice(0, 12)}`, name, ...data };
+      if (at >= 0) list[at] = tpl;
+      else list.push(tpl);
+      store.saveSettings({ templates: list });
+      toast(at >= 0 ? `已更新範本「${name}」` : `已存成範本「${name}」`);
+      return true;
+    },
+  });
+}
+
 export function openTaskModal(task = null, defaults = {}) {
-  const base = { title: '', notes: '', date: '', time: '', duration: 60, priority: 'none', status: 'todo', goalId: '', repeat: 'none', repeatDays: [], repeatUntil: '', checklist: [] };
+  const base = { title: '', notes: '', date: '', time: '', duration: 60, priority: 'none', status: 'todo', goalId: '', repeat: 'none', repeatDays: [], repeatUntil: '', checklist: [], tags: [], remind: null };
   const t = task ? { ...base, ...task } : { ...base, ...defaults };
+  const tags = allTags();
+  const templates = store.state.settings.templates;
+  const calendarOn = bridgeOn() || store.state.settings.gcalOn;
   const weekStart = store.state.settings.weekStart;
   const repeating = t.repeat !== 'none';
   const days = t.repeatDays.length ? t.repeatDays : t.date ? [weekdayOf(t.date)] : [];
   const goals = store.state.goals.filter((g) => g.status !== 'done' || g.id === t.goalId);
   const body = `
+    ${!task && templates.length ? `<div class="field"><label for="tm-template">從範本建立</label>
+      <select id="tm-template" data-template><option value="">不用範本</option>${templates
+        .map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}
     <div class="field"><label for="tm-title">任務名稱</label>
       <input id="tm-title" name="title" value="${esc(t.title)}" maxlength="300" autocomplete="off" autofocus placeholder="例如：準備週三的課"></div>
     <div class="field-row field-row-3">
@@ -214,6 +299,16 @@ export function openTaskModal(task = null, defaults = {}) {
     </fieldset>
     <fieldset class="field" data-status-field${repeating ? ' hidden' : ''}><legend>狀態</legend>${segRadio('status', [['todo', '待辦'], ['doing', '進行中'], ['done', '完成']], t.status, '狀態')}</fieldset>
     <fieldset class="field" data-priority-field><legend>優先度</legend>${segRadio('priority', [['none', '無'], ['low', '低'], ['medium', '中'], ['high', '高']], t.priority, '優先度')}</fieldset>
+    <fieldset class="field tag-field"><legend>標籤</legend>
+      <div class="tag-picks" data-tag-picks>${tags.length ? tags.map((g) => tagPick(g, t.tags.includes(g.id))).join('') : '<span class="hint" data-tag-empty>還沒有標籤。在下面輸入名稱，就會建立第一個標籤。</span>'}</div>
+      <div class="inline-add">
+        <input data-tag-new placeholder="新增標籤，按 Enter 加入" maxlength="20" autocomplete="off" aria-label="新增標籤">
+        <button type="button" class="btn small" data-tag-add>${icon('plus')}新增</button>
+      </div>
+    </fieldset>
+    <div class="field"><label for="tm-remind">提醒</label>
+      <select id="tm-remind" name="remind">${remindOptions(!!t.time, t.remind)}</select>
+      <p class="hint">${calendarOn ? '會透過 Google 日曆通知你的手機。' : '連接 Google 日曆之後，手機會在這個時間通知你。'}</p></div>
     <div class="field"><span class="label" id="tm-check-label">小清單</span>
       <ul class="checklist" data-checklist aria-labelledby="tm-check-label">${t.checklist.map(checkItem).join('')}</ul>
       <div class="inline-add">
@@ -231,7 +326,34 @@ export function openTaskModal(task = null, defaults = {}) {
     title: task ? '編輯任務' : '新增任務',
     body,
     submitLabel: task ? '儲存' : '新增任務',
-    extra: task ? [{ label: '刪除', icon: 'trash', className: 'ghost danger-text', onClick: () => deleteTaskWithUndo(task.id) }] : [],
+    extra: [
+      ...(task ? [{ label: '刪除', icon: 'trash', className: 'ghost danger-text', onClick: () => deleteTaskWithUndo(task.id) }] : []),
+      {
+        label: '存成範本',
+        icon: 'copy',
+        className: 'ghost',
+        closes: false,
+        onClick(form) {
+          const f = form.elements;
+          const title = f.title.value.trim();
+          if (!title) {
+            fieldError(form, 'title', '先輸入任務名稱，再存成範本');
+            return false;
+          }
+          saveAsTemplate({
+            title,
+            notes: f.notes.value.trim(),
+            checklist: [...form.querySelectorAll('.check-item .check-text')].map((el) => el.value.trim()).filter(Boolean),
+            tags: [...form.querySelectorAll('input[name="tags"]:checked')].map((b) => b.value),
+            time: f.time.value,
+            duration: Number(f.duration.value) || 60,
+            priority: f.priority.value || 'none',
+            remind: f.remind.value === 'default' ? null : Number(f.remind.value),
+          });
+          return false;
+        },
+      },
+    ],
     onOpen(form) {
       const more = form.querySelector('.repeat-more');
       const dayBox = form.querySelector('.repeat-days');
@@ -239,7 +361,55 @@ export function openTaskModal(task = null, defaults = {}) {
       const dateLabel = form.querySelector('label[for="tm-date"]');
       const list = form.querySelector('[data-checklist]');
       const newItem = form.querySelector('[data-check-new]');
+      const tagBox = form.querySelector('[data-tag-picks]');
+      const tagNew = form.querySelector('[data-tag-new]');
+      const remindSel = form.elements.remind;
+      const refreshRemind = (value = remindSel.value === 'default' ? null : Number(remindSel.value)) => {
+        remindSel.innerHTML = remindOptions(!!form.elements.time.value, value);
+      };
+      form.elements.time.addEventListener('input', () => refreshRemind());
+      const addTag = () => {
+        const name = tagNew.value.trim();
+        if (!name) return;
+        const { ids, created } = ensureTags([name]);
+        if (!ids.length) {
+          toast('標籤最多 40 個，請先到設定刪掉用不到的', { tone: 'error' });
+          return;
+        }
+        const box = [...tagBox.querySelectorAll('input[name="tags"]')].find((b) => b.value === ids[0]);
+        if (box) box.checked = true;
+        else {
+          const tag = created[0] || allTags().find((g) => g.id === ids[0]);
+          tagBox.querySelector('[data-tag-empty]')?.remove();
+          tagBox.insertAdjacentHTML('beforeend', tagPick(tag, true));
+        }
+        tagNew.value = '';
+        tagNew.focus();
+      };
+      const applyTemplate = (tpl) => {
+        const f = form.elements;
+        f.title.value = tpl.title || tpl.name;
+        if (tpl.notes && !f.notes.value.trim()) f.notes.value = tpl.notes;
+        list.innerHTML = tpl.checklist.map((text) => checkItem({ id: uid().slice(0, 12), text, done: false })).join('');
+        for (const b of tagBox.querySelectorAll('input[name="tags"]')) b.checked = tpl.tags.includes(b.value);
+        if (![...f.duration.options].some((o) => Number(o.value) === tpl.duration)) f.duration.insertAdjacentHTML('beforeend', `<option value="${tpl.duration}">${tpl.duration} 分鐘</option>`);
+        f.duration.value = String(tpl.duration);
+        const prio = form.querySelector(`input[name="priority"][value="${tpl.priority}"]`);
+        if (prio) prio.checked = true;
+        if (tpl.time) f.time.value = tpl.time;
+        refreshRemind(tpl.remind);
+      };
       form.addEventListener('change', (e) => {
+        if (e.target.matches('[data-template]')) {
+          const tpl = store.state.settings.templates.find((x) => x.id === e.target.value);
+          if (tpl) applyTemplate(tpl);
+          return;
+        }
+        if (e.target.name === 'tags' && e.target.checked && form.querySelectorAll('input[name="tags"]:checked').length > MAX_TASK_TAGS) {
+          e.target.checked = false;
+          toast(`一個任務最多 ${MAX_TASK_TAGS} 個標籤`);
+          return;
+        }
         if (e.target.name !== 'repeat') return;
         const v = e.target.value;
         more.hidden = v === 'none';
@@ -272,11 +442,19 @@ export function openTaskModal(task = null, defaults = {}) {
           e.preventDefault();
           newItem.focus();
         }
+        if (e.key === 'Enter' && !e.isComposing && e.target === tagNew) {
+          e.preventDefault();
+          addTag();
+        }
       });
       form.addEventListener('click', (e) => {
         if (e.target.closest('[data-check-add]')) {
           e.preventDefault();
           addItem();
+        }
+        if (e.target.closest('[data-tag-add]')) {
+          e.preventDefault();
+          addTag();
         }
         const rm = e.target.closest('[data-check-remove]');
         if (rm) {
@@ -304,7 +482,12 @@ export function openTaskModal(task = null, defaults = {}) {
         checklist: [...form.querySelectorAll('.check-item')]
           .map((li) => ({ id: li.dataset.item, text: li.querySelector('.check-text').value.trim(), done: li.querySelector('.check-done').checked }))
           .filter((i) => i.text),
+        tags: [...form.querySelectorAll('input[name="tags"]:checked')].map((b) => b.value).slice(0, MAX_TASK_TAGS),
+        remind: f.remind.value === 'default' ? null : Number(f.remind.value),
       };
+      // 還沒按「新增」的標籤名稱也收進去
+      const pendingTag = form.querySelector('[data-tag-new]').value.trim();
+      if (pendingTag) data.tags = [...new Set([...data.tags, ...ensureTags([pendingTag]).ids])].slice(0, MAX_TASK_TAGS);
       // 還沒按「新增」的小步驟也收進去
       const pending = form.querySelector('[data-check-new]').value.trim();
       if (pending) data.checklist.push({ id: uid().slice(0, 12), text: pending, done: false });

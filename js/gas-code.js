@@ -3,7 +3,7 @@
 // 程式刻意寫得很單純：要放進日曆的行程內容都由網站算好，這裡只負責讀寫 Google 日曆，
 // 這樣網站更新時，大部分情況都不用請使用者重新貼程式。
 // 真的要改這裡的程式時，把 SCRIPT_VERSION 加一，設定裡會提醒使用者更新。
-export const SCRIPT_VERSION = 1;
+export const SCRIPT_VERSION = 2;
 
 export function scriptCode(key) {
   return TEMPLATE.replace('__PLANNER_KEY__', key).replace('__VERSION__', String(SCRIPT_VERSION));
@@ -15,6 +15,7 @@ const TEMPLATE = String.raw`/**
  * 這段程式讓「計劃版」網站和你的 Google 日曆自動同步：
  *   - 計劃版有日期的任務和目標期限，會放進 Google 日曆裡的「計劃版」日曆
  *   - 你 Google 日曆裡的行程，會顯示在計劃版的行事曆和「今天」（只會讀，不會改）
+ *   - 每天把計劃版的資料備份一份到你的 Google 雲端硬碟（「計劃版備份」資料夾，留最近 30 份）
  *
  * 它在你自己的 Google 帳號裡執行，只有知道下面那組密碼的計劃版能使用它。
  * 不要把這段程式、密碼和部署後的網址給別人。
@@ -67,6 +68,7 @@ function route_(req) {
   }
   if (req.action === 'events') return listEvents_(req);
   if (req.action === 'sync') return sync_(req);
+  if (req.action === 'backup') return backup_(req);
   return { ok: false, error: 'bad-action' };
 }
 
@@ -275,6 +277,53 @@ function upsert_(calId, ev, exists) {
     ev.status = 'confirmed';
     return Calendar.Events.update(ev, calId, ev.id);
   }
+}
+
+// ---------- 備份到 Google 雲端硬碟 ----------
+var BACKUP_PREFIX = '計劃版備份 ';
+var BACKUP_KEEP = 30;
+
+function backupFolder_() {
+  var props = props_();
+  var id = props.getProperty('backupFolderId');
+  if (id) {
+    try {
+      var found = DriveApp.getFolderById(id);
+      if (!found.isTrashed()) return found;
+    } catch (err) {
+      // 資料夾被刪掉了，重新建一個
+    }
+  }
+  var folder = DriveApp.createFolder('計劃版備份');
+  props.setProperty('backupFolderId', folder.getId());
+  return folder;
+}
+
+function backup_(req) {
+  if (!req.data || typeof req.data !== 'object') return { ok: false, error: 'bad-backup' };
+  var day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.day || '')) ? String(req.day) : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var name = BACKUP_PREFIX + day + '.json';
+  var json = JSON.stringify(req.data);
+  var folder = backupFolder_();
+  // 同一天的備份直接覆蓋（丟到垃圾桶的不算）
+  var target = null;
+  var same = folder.getFilesByName(name);
+  while (same.hasNext() && !target) {
+    var s = same.next();
+    if (!s.isTrashed()) target = s;
+  }
+  if (target) target.setContent(json);
+  else folder.createFile(name, json, 'application/json');
+  // 只留最近 30 份
+  var files = [];
+  var it = folder.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (!f.isTrashed() && f.getName().indexOf(BACKUP_PREFIX) === 0) files.push(f);
+  }
+  files.sort(function (a, b) { return a.getName() < b.getName() ? 1 : -1; });
+  for (var i = BACKUP_KEEP; i < files.length; i++) files[i].setTrashed(true);
+  return { ok: true, file: name, folderUrl: folder.getUrl(), kept: Math.min(files.length, BACKUP_KEEP) };
 }
 
 function when_(t) {

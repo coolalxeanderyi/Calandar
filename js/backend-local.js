@@ -2,10 +2,10 @@
 import { DELETE, isPlainObject } from './utils.js';
 
 const STORE_KEY = 'planner.v1.demo';
-const COLS = ['tasks', 'goals', 'habits', 'reviews'];
+const COLS = ['tasks', 'goals', 'habits', 'reviews', 'journal'];
 
 function emptyData() {
-  return { tasks: {}, goals: {}, habits: {}, reviews: {}, settings: {} };
+  return { tasks: {}, goals: {}, habits: {}, reviews: {}, journal: {}, settings: {} };
 }
 
 export function readLocalData() {

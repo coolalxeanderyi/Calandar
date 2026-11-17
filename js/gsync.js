@@ -6,7 +6,7 @@
 //   - 寫：gcal.js 用 bridgeCall('sync', …) 把任務放進「計劃版」日曆
 // 不需要伺服器、不用每小時重新確認，全部免費。
 import { store } from './store.js';
-import { toKey, fromKey, addDays } from './utils.js';
+import { toKey, fromKey, addDays, todayKey } from './utils.js';
 
 const CACHE_KEY = 'planner.gs.events';
 const INFO_KEY = 'planner.gs.info';
@@ -148,6 +148,7 @@ export async function pingBridge({ url, key } = {}) {
   writeJSON(INFO_KEY, info);
   memo = new Map(); // 日曆的名稱和顏色可能變了
   emit();
+  setTimeout(autoBackup, 0);
   return info;
 }
 
@@ -428,6 +429,61 @@ export function startExternal() {
   document.addEventListener('visibilitychange', again);
   window.addEventListener('online', again);
   setInterval(again, FRESH);
+  // 每天備份一次：打開後過一下、回到這個分頁、每 5 分鐘檢查一次
+  const backupLater = () => {
+    if (document.visibilityState === 'visible') autoBackup();
+  };
+  setTimeout(backupLater, 8000);
+  document.addEventListener('visibilitychange', backupLater);
+  setInterval(backupLater, FRESH);
+}
+
+// ---------- 每天自動備份到 Google 雲端硬碟（Apps Script 第 2 版以後） ----------
+export const BACKUP_VERSION = 2;
+let backupBusy = false;
+let backupTriedAt = 0;
+let backupError = '';
+export const backupState = () => ({ busy: backupBusy, error: backupError });
+const backupListeners = new Set();
+export function onBackupChange(fn) {
+  backupListeners.add(fn);
+  return () => backupListeners.delete(fn);
+}
+const emitBackup = () => {
+  for (const fn of backupListeners) fn();
+};
+
+export async function backupNow() {
+  if (backupBusy) return null;
+  backupBusy = true;
+  backupError = '';
+  emitBackup();
+  try {
+    const day = todayKey();
+    const r = await bridgeCall('backup', { day, data: store.exportData() }, { timeout: 120_000 });
+    store.saveSettings({ backupDay: day, ...(/^https:\/\/drive\.google\.com\//.test(r.folderUrl || '') ? { backupUrl: r.folderUrl } : {}) });
+    return r;
+  } catch (err) {
+    backupError = err.code === 'bad-action' ? '要先更新 Apps Script 的程式碼，才能備份到雲端硬碟。' : err.message;
+    throw err;
+  } finally {
+    backupBusy = false;
+    emitBackup();
+  }
+}
+
+// 打開計劃版時，今天還沒備份過就在背景備份一次（失敗的話 30 分鐘後再試）
+export function autoBackup() {
+  const s = store.state;
+  if (!bridgeOn(s) || !s.settings.backupOn || s.settings.backupDay === todayKey() || backupBusy) return;
+  const cur = currentInfo();
+  if (!cur) {
+    refreshInfo();
+    return;
+  }
+  if (cur.version < BACKUP_VERSION || Date.now() - backupTriedAt < 30 * 60_000) return;
+  backupTriedAt = Date.now();
+  backupNow().catch(() => {});
 }
 
 // 立刻重新抓（例如換了要顯示的日曆）
@@ -449,6 +505,8 @@ export function clearExternal({ revoke = false } = {}) {
   pullError = '';
   infoError = '';
   infoTriedAt = 0;
+  backupError = '';
+  backupTriedAt = 0;
   queued.clear();
   writeJSON(CACHE_KEY, null);
   writeJSON(INFO_KEY, null);

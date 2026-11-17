@@ -6,9 +6,12 @@ import {
 import { icon } from '../ui.js';
 import { isDone, tasksByDate, expandTasks, compareTasks, endTime, repeatLabel, isRepeating } from '../model.js';
 import { taskList, emptyState, goalsMap, occAttr, openTaskModal, eventList, evAttrs, evTimeText } from '../components.js';
-import { eventsBetween, groupByDay } from '../gsync.js';
+import { eventsBetween, groupByDay, bridgeOn } from '../gsync.js';
+import { tagMap, tagFilterBar } from '../tags.js';
 
-const ui = { mode: 'month', cursor: null, selected: null };
+const ui = { mode: 'month', cursor: null, selected: null, tag: '' };
+// 篩選標籤時只看自己的任務，Google 日曆的行程先不顯示
+const events = (from, to) => (ui.tag ? [] : eventsBetween(from, to));
 
 function goalsByDeadline(goals) {
   const map = new Map();
@@ -168,7 +171,7 @@ function dayView(state, today, deadlines) {
   const dayStart = fromKey(key).getTime();
   const evAllDay = [];
   const evBlocks = [];
-  for (const ev of eventsBetween(key, key)) {
+  for (const ev of events(key, key)) {
     const start = Math.max(0, Math.round((ev.startMs - dayStart) / 60_000));
     const end = Math.min(24 * 60, Math.round((ev.endMs - dayStart) / 60_000));
     if (ev.allDay || (start <= 0 && end >= 24 * 60)) evAllDay.push(ev);
@@ -194,12 +197,14 @@ function dayView(state, today, deadlines) {
         </button>
       </div>`;
     }
-    return `<div class="day-block prio-${t.priority}${isDone(t) ? ' is-done' : ''}${short ? ' is-short' : ''}" style="${box}">
+    const movable = !t.occ && !isRepeating(t);
+    return `<div class="day-block prio-${t.priority}${isDone(t) ? ' is-done' : ''}${short ? ' is-short' : ''}${movable ? ' is-movable' : ''}" style="${box}"${movable ? ` data-tl-id="${esc(t.id)}"` : ''}>
       <button type="button" class="check small" role="checkbox" aria-checked="${isDone(t)}" data-action="toggle-task" data-id="${esc(t.id)}"${occAttr(t)} aria-label="完成：${esc(t.title)}">${icon('check')}</button>
       <button type="button" class="day-block-main" data-action="open-task" data-id="${esc(t.id)}"${occAttr(t)}>
         <span class="day-block-title">${esc(t.title)}</span>
         <span class="day-block-time">${t.time}–${endTime(t)}${isRepeating(t) ? `・🔁 ${repeatLabel(t)}` : ''}</span>
       </button>
+      ${movable ? '<span class="day-resize" data-tl-resize aria-hidden="true"></span>' : ''}
     </div>`;
   }).join('');
 
@@ -208,6 +213,11 @@ function dayView(state, today, deadlines) {
     ? `<div class="day-now" style="top:${top(nowMin)}px" aria-hidden="true"><span>${pad2(Math.floor(nowMin / 60))}:${pad2(nowMin % 60)}</span></div>`
     : '';
 
+  // 還沒排日期的任務：可以直接拖進時間軸
+  const placeAttr = (t) => (!t.occ && !isRepeating(t) ? ` data-tl-place="${esc(t.id)}"` : '');
+  const undated = state.tasks.filter((t) => !t.date && !isDone(t) && !isRepeating(t)).sort(compareTasks);
+  const TRAY = 12;
+
   return `
     <div class="day-view">
       <div class="day-allday">
@@ -215,12 +225,19 @@ function dayView(state, today, deadlines) {
         <div class="day-allday-items">
           ${goalFlags(goals)}
           ${evAllDay.length ? eventList(evAllDay, key) : ''}
-          ${allDay.length ? taskList(allDay, { goalsById: goalsMap(), today, showDate: false }) : goals.length || evAllDay.length ? '' : '<p class="hint">沒有整天的任務。</p>'}
+          ${allDay.length ? taskList(allDay, { goalsById: goalsMap(), today, showDate: false, rowAttrs: placeAttr }) : goals.length || evAllDay.length ? '' : '<p class="hint">沒有整天的任務。</p>'}
         </div>
       </div>
+      ${undated.length ? `<div class="day-tray">
+        <span class="day-allday-label">還沒排日期</span>
+        <div class="day-tray-items">
+          ${undated.slice(0, TRAY).map((t) => `<button type="button" class="tray-chip prio-${t.priority}" data-action="open-task" data-id="${esc(t.id)}" data-tl-place="${esc(t.id)}"><i class="dot" aria-hidden="true"></i>${esc(t.title)}</button>`).join('')}
+          ${undated.length > TRAY ? `<a class="tray-more" href="#/tasks">還有 ${undated.length - TRAY} 個</a>` : ''}
+        </div>
+      </div>` : ''}
       <div class="day-grid" style="height:${hours.length * HOUR}px">
         <div class="day-hours" aria-hidden="true">${hours.map((h) => `<span style="top:${(h - startHour) * HOUR}px">${pad2(h)}:00</span>`).join('')}</div>
-        <div class="day-track">
+        <div class="day-track" data-drop-time="${key}" data-start-hour="${startHour}" data-hour="${HOUR}">
           ${hours.map((h) => `<button type="button" class="day-slot" style="top:${(h - startHour) * HOUR}px;height:${HOUR}px" data-action="day-slot" data-time="${pad2(h)}:00" aria-label="在 ${pad2(h)}:00 新增任務"></button>`).join('')}
           ${blocks}
           ${nowLine}
@@ -239,10 +256,12 @@ export default {
     }
   },
 
-  render(state) {
+  render(fullState) {
     const today = todayKey();
     ui.cursor ||= today;
     ui.selected ||= today;
+    if (ui.tag && !tagMap().has(ui.tag)) ui.tag = ''; // 標籤被刪掉了
+    const state = ui.tag ? { ...fullState, tasks: fullState.tasks.filter((t) => t.tags.includes(ui.tag)) } : fullState;
     const deadlines = goalsByDeadline(state.goals);
     const [y, m] = ui.cursor.split('-').map(Number);
     const { weekStart } = state.settings;
@@ -254,19 +273,21 @@ export default {
       const grid = monthGrid(y, m - 1, weekStart).flat();
       const [first, last] = [grid[0], grid[grid.length - 1]];
       byDate = tasksByDate(state.tasks, first, last);
-      evByDate = groupByDay(eventsBetween(first, last), first, last);
+      evByDate = groupByDay(events(first, last), first, last);
     } else if (ui.mode === 'week') {
       const keys = weekKeys(ui.cursor, weekStart);
       title = `${fmtMonthDay(keys[0])} – ${fmtMonthDay(keys[6])}`;
       byDate = tasksByDate(state.tasks, keys[0], keys[6]);
-      evByDate = groupByDay(eventsBetween(keys[0], keys[6]), keys[0], keys[6]);
+      evByDate = groupByDay(events(keys[0], keys[6]), keys[0], keys[6]);
     } else {
       title = `${fmtMonthDay(ui.cursor)}<span class="view-sub">${fmtWeekday(ui.cursor)}${ui.cursor === today ? '，今天' : ''}</span>`;
     }
     const unit = { month: '個月', week: '週', day: '天' }[ui.mode];
     const view = ui.mode === 'month' ? monthView(state, today, byDate, deadlines, evByDate)
       : ui.mode === 'week' ? weekView(state, today, byDate, deadlines, evByDate) : dayView(state, today, deadlines);
-    const tip = ui.mode === 'day' ? '提示：點時間軸上的空白時段，可以直接在那個時間新增任務。' : '提示：在電腦上可以直接把任務拖到別的日期（重複的任務除外）。';
+    const tip = ui.mode === 'day'
+      ? '提示：點空白時段可以在那個時間新增任務；拖曳任務可以改時間，拉方塊底部可以改長度；整天或還沒排日期的任務也可以拖進時間軸（手機請先長按再拖）。'
+      : '提示：在電腦上可以直接把任務拖到別的日期（重複的任務除外）。';
 
     return `
     <div class="cal-view">
@@ -283,6 +304,8 @@ export default {
           <button type="button" class="chip${ui.mode === 'day' ? ' is-active' : ''}" aria-pressed="${ui.mode === 'day'}" data-action="cal-mode" data-value="day">日</button>
         </div>
       </div>
+      ${tagFilterBar(ui.tag, 'cal-tag')}
+      ${ui.tag && bridgeOn() ? '<p class="hint cal-filter-note">篩選標籤時，只顯示有這個標籤的任務，Google 日曆的行程先不顯示。</p>' : ''}
       ${view}
       <p class="cal-tip">${tip}</p>
     </div>`;
@@ -312,7 +335,11 @@ export default {
       ctx.rerender();
     },
     'day-slot'(el) {
-      openTaskModal(null, { date: ui.cursor, time: el.dataset.time });
+      openTaskModal(null, { date: ui.cursor, time: el.dataset.time, ...(ui.tag ? { tags: [ui.tag] } : {}) });
+    },
+    'cal-tag'(el, e, ctx) {
+      ui.tag = ui.tag === el.dataset.value ? '' : el.dataset.value;
+      ctx.rerender();
     },
     'cal-today'(el, e, ctx) {
       ui.cursor = todayKey();
@@ -327,6 +354,6 @@ export default {
   },
 
   newTaskDefaults() {
-    return { date: (ui.mode === 'day' ? ui.cursor : ui.selected) || todayKey() };
+    return { date: (ui.mode === 'day' ? ui.cursor : ui.selected) || todayKey(), ...(ui.tag ? { tags: [ui.tag] } : {}) };
   },
 };

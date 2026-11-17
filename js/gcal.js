@@ -8,7 +8,7 @@
 //   2. 直接用 Google 登入拿通行證（calendar.app.created）：通行證大約一小時會過期，
 //      過期後有變更時，頁首會出現「點一下同步日曆」
 import { store } from './store.js';
-import { isDone, isRepeating, repeatDaysOf } from './model.js';
+import { isDone, isRepeating, repeatDaysOf, remindMinutes } from './model.js';
 import { addDays, toKey } from './utils.js';
 import { bridgeOn, bridgeCall, SETUP_ERRORS, clearExternal } from './gsync.js';
 
@@ -108,29 +108,36 @@ function rrule(t) {
   return rule;
 }
 
+// 行程說明：標籤放第一行，接著是備註
+function describe(t, tagsById) {
+  const names = (t.tags || []).map((id) => tagsById.get(id)?.name).filter(Boolean);
+  return [names.length ? names.map((n) => `#${n}`).join(' ') : '', t.notes || ''].filter(Boolean).join('\n');
+}
+
 export function desiredEvents(s = store.state) {
   const zone = timeZone();
   const events = [];
+  const tagsById = new Map((s.settings.tags || []).map((g) => [g.id, g]));
   for (const t of s.tasks) {
     if (!t.date) continue;
     const repeating = isRepeating(t);
     const done = !repeating && isDone(t);
+    const minutes = remindMinutes(t);
     const ev = {
       id: eventId('t', t.id),
       summary: `${done ? '✅ ' : ''}${t.title}`,
-      description: t.notes || '',
+      description: describe(t, tagsById),
       transparency: 'transparent',
       extendedProperties: { private: { planner: '1' } },
     };
     if (t.time) {
       ev.start = { dateTime: `${t.date}T${t.time}:00`, timeZone: zone };
       ev.end = { dateTime: plusMinutes(t.date, t.time, t.duration || 60), timeZone: zone };
-      ev.reminders = { useDefault: false, overrides: done ? [] : [{ method: 'popup', minutes: 10 }] };
     } else {
       ev.start = { date: t.date };
       ev.end = { date: addDays(t.date, 1) };
-      ev.reminders = { useDefault: false, overrides: [] };
     }
+    ev.reminders = { useDefault: false, overrides: done || minutes === null ? [] : [{ method: 'popup', minutes }] };
     const color = done ? '8' : COLORS[t.priority];
     if (color) ev.colorId = color;
     if (repeating) ev.recurrence = [rrule(t)];

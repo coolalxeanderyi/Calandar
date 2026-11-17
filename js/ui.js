@@ -30,6 +30,10 @@ const PATHS = {
   pin: '<path d="M12 20.5s-6.5-5.9-6.5-10.8a6.5 6.5 0 0 1 13 0c0 4.9-6.5 10.8-6.5 10.8Z"/><circle cx="12" cy="9.7" r="2.3"/>',
   external: '<path d="M13.5 4.5h6v6"/><path d="M19.5 4.5 11 13"/><path d="M17.5 13.5v5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1h5"/>',
   edit: '<path d="M5 19h3.5L19 8.5 15.5 5 5 15.5V19Z"/><path d="m13.5 7 3.5 3.5"/>',
+  list: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="2.6"/>',
+  board: '<rect x="3.5" y="4.5" width="5" height="15" rx="1.5"/><rect x="10" y="4.5" width="5" height="10" rx="1.5"/><rect x="16.5" y="4.5" width="4" height="6" rx="1.5"/>',
+  tag: '<path d="M4 4.5h7l8.5 8.5-6.5 6.5L4.5 11V4.5Z"/><circle cx="8.3" cy="8.8" r="1.3"/>',
+  heat: '<rect x="4" y="4" width="4" height="4" rx="1"/><rect x="10" y="4" width="4" height="4" rx="1"/><rect x="16" y="4" width="4" height="4" rx="1"/><rect x="4" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="16" y="10" width="4" height="4" rx="1"/><rect x="4" y="16" width="4" height="4" rx="1"/><rect x="10" y="16" width="4" height="4" rx="1"/>',
 };
 
 export function icon(name, cls = '') {
