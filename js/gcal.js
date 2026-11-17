@@ -1,13 +1,16 @@
-// Google 日曆同步（單向：計劃版 → Google 日曆）
+// Google 日曆同步：計劃版 → Google 日曆裡的「計劃版」日曆
 //
-// - 在你的 Google 日曆裡建立一個專屬的「計劃版」日曆，只動這個日曆，不碰你其他的行程。
-// - 有日期的任務會變成行程：有時間的是 1 小時的行程（開始前 10 分鐘提醒），沒時間的是全天行程。
+// - 只動「計劃版」這個日曆，不碰你其他的行程。
+// - 有日期的任務會變成行程：有時間的會照時長（預設 1 小時），開始前 10 分鐘提醒；沒時間的是全天行程。
 // - 進行中目標的期限會變成全天行程。
-// - 權限只要求「建立並管理這個 App 自己建立的日曆」（calendar.app.created）。
-// - Google 給的通行證大約一小時會過期；過期後有變更時，頁首會出現「同步日曆」按鈕，點一下就好。
+// - 兩種連接方式：
+//   1. 透過你自己的 Google Apps Script（gsync.js）：自動同步，不用重新確認（建議）
+//   2. 直接用 Google 登入拿通行證（calendar.app.created）：通行證大約一小時會過期，
+//      過期後有變更時，頁首會出現「點一下同步日曆」
 import { store } from './store.js';
 import { isDone, isRepeating, repeatDaysOf } from './model.js';
 import { addDays, toKey } from './utils.js';
+import { bridgeOn, bridgeCall, SETUP_ERRORS, clearExternal } from './gsync.js';
 
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
 const API = 'https://www.googleapis.com/calendar/v3';
@@ -22,6 +25,10 @@ let syncing = false;
 let again = false;
 let timer = null;
 let lastSynced = ''; // 這台裝置最後一次同步完成時的內容指紋
+let retryTimer = null; // 透過 Apps Script 同步失敗時，等一下自動再試
+let retryDelay = 0;
+let heldSig = ''; // Apps Script 設定有問題時，等使用者改好設定再試
+const bridgeSig = (s = store.state) => `${s.settings.gsUrl}|${s.settings.gsKey}`;
 
 export const gcalState = () => state;
 export function onGcalChange(fn) {
@@ -40,6 +47,12 @@ export function initGcal(authApi) {
   if (started) return;
   started = true;
   store.subscribe(evaluate);
+  window.addEventListener('online', () => {
+    if (state.phase !== 'error' || !bridgeOn()) return;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    evaluate();
+  });
   evaluate();
 }
 
@@ -171,10 +184,17 @@ function evaluate() {
   const pending = fp !== s.settings.gcalHash && fp !== lastSynced;
   if (!pending) {
     clearTimeout(timer);
-    if (state.phase !== 'error') setState({ phase: 'synced', message: '' });
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    setState({ phase: 'synced', message: '' });
     return;
   }
-  if (getToken()) {
+  if (bridgeOn(s)) {
+    if (state.phase === 'error' && (retryTimer || (heldSig && heldSig === bridgeSig(s)))) return;
+    setState({ phase: 'waiting', message: '' });
+    clearTimeout(timer);
+    timer = setTimeout(() => run().catch(() => {}), 1500);
+  } else if (getToken()) {
     setState({ phase: 'waiting', message: '' });
     clearTimeout(timer);
     timer = setTimeout(() => run().catch(() => {}), 1500);
@@ -281,47 +301,88 @@ function explain(err) {
   return `同步到 Google 日曆失敗：${err.message}`;
 }
 
+// 直接呼叫 Google 日曆 API，在這台裝置比對要新增、更新、刪除哪些行程
+async function pushViaApi(desired) {
+  let calId = store.state.settings.gcalId || (await createCalendar());
+  let existing;
+  try {
+    existing = await listEvents(calId);
+  } catch (err) {
+    if (err.status !== 404) throw err;
+    calId = await createCalendar(); // 日曆被刪掉了，重新建一個
+    existing = [];
+  }
+  const have = new Map(existing.map((e) => [e.id, e]));
+  const wanted = new Set(desired.map((e) => e.id));
+  const jobs = [];
+  for (const ev of desired) {
+    const cur = have.get(ev.id);
+    if (!cur) jobs.push(() => upsert(calId, ev, false));
+    else if (differs(ev, cur)) jobs.push(() => upsert(calId, ev, true));
+  }
+  for (const e of existing) {
+    if (!wanted.has(e.id)) {
+      jobs.push(() => api('DELETE', `/calendars/${enc(calId)}/events/${e.id}`).catch((err) => {
+        if (err.status !== 404 && err.status !== 410) throw err;
+      }));
+    }
+  }
+  await pool(jobs);
+  return jobs.length;
+}
+
+// 交給使用者自己的 Apps Script 比對和寫入（一次做不完會分幾次）
+async function pushViaBridge(desired) {
+  let calId = store.state.settings.gcalId;
+  let changed = 0;
+  for (let round = 0; round < 10; round++) {
+    const r = await bridgeCall('sync', { name: CALENDAR_NAME, calendarId: calId, timeZone: timeZone(), events: desired }, { timeout: 330_000 });
+    if (r.calendarId && r.calendarId !== store.state.settings.gcalId) store.saveSettings({ gcalId: r.calendarId });
+    calId = r.calendarId || calId;
+    changed += (r.created || 0) + (r.updated || 0) + (r.removed || 0);
+    if (Array.isArray(r.errors) && r.errors.length) {
+      throw Object.assign(new Error(`有 ${r.errors.length} 個行程沒有放進 Google 日曆：${r.errors[0].message}`), { code: 'partial' });
+    }
+    if (r.done !== false) break;
+  }
+  return changed;
+}
+
+function scheduleRetry() {
+  retryDelay = Math.min(retryDelay ? retryDelay * 2 : 30_000, 10 * 60_000);
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    evaluate();
+  }, retryDelay);
+}
+
 export async function run() {
   if (syncing) {
     again = true;
     return;
   }
   syncing = true;
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  const viaBridge = bridgeOn();
   setState({ phase: 'syncing', message: '' });
   try {
     const desired = desiredEvents();
     const hash = fingerprint(desired);
-    let calId = store.state.settings.gcalId || (await createCalendar());
-    let existing;
-    try {
-      existing = await listEvents(calId);
-    } catch (err) {
-      if (err.status !== 404) throw err;
-      calId = await createCalendar(); // 日曆被刪掉了，重新建一個
-      existing = [];
-    }
-    const have = new Map(existing.map((e) => [e.id, e]));
-    const wanted = new Set(desired.map((e) => e.id));
-    const jobs = [];
-    for (const ev of desired) {
-      const cur = have.get(ev.id);
-      if (!cur) jobs.push(() => upsert(calId, ev, false));
-      else if (differs(ev, cur)) jobs.push(() => upsert(calId, ev, true));
-    }
-    for (const e of existing) {
-      if (!wanted.has(e.id)) {
-        jobs.push(() => api('DELETE', `/calendars/${enc(calId)}/events/${e.id}`).catch((err) => {
-          if (err.status !== 404 && err.status !== 410) throw err;
-        }));
-      }
-    }
-    await pool(jobs);
+    const changed = viaBridge ? await pushViaBridge(desired) : await pushViaApi(desired);
     lastSynced = hash;
+    retryDelay = 0;
+    heldSig = '';
     store.saveSettings({ gcalHash: hash, gcalAt: Date.now() });
     setState({ phase: 'synced', message: '' });
-    return { changed: jobs.length, total: desired.length };
+    return { changed, total: desired.length };
   } catch (err) {
-    if (err.code === 'need-auth' || err.status === 401) {
+    if (viaBridge) {
+      setState({ phase: 'error', message: err.message });
+      if (SETUP_ERRORS.has(err.code)) heldSig = bridgeSig();
+      else scheduleRetry();
+    } else if (err.code === 'need-auth' || err.status === 401) {
       dropToken();
       setState({ phase: 'need-auth', message: '' });
     } else if (err.status === 403 && /insufficient|scope/i.test(`${err.message} ${err.reason}`)) {
@@ -349,11 +410,20 @@ export async function connect() {
   return run();
 }
 
-// 停止同步（Google 日曆裡已經同步過去的行程會留著，想刪掉可以直接刪掉整個日曆）
+// 只開關「把任務放進 Google 日曆」（透過 Apps Script 連接時，Google 日曆的行程照樣會顯示）
+export function setPush(on) {
+  store.saveSettings(on ? { gcalOn: true, gcalHash: '' } : { gcalOn: false });
+}
+
+// 停止同步／中斷連接（Google 日曆裡已經同步過去的行程會留著，想刪掉可以直接刪掉整個日曆）
 export function disconnect() {
   dropToken();
   lastSynced = '';
-  store.saveSettings({ gcalOn: false, gcalHash: '' });
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  heldSig = '';
+  clearExternal({ revoke: true });
+  store.saveSettings({ gcalOn: false, gcalHash: '', gsUrl: '', gsKey: '', gsPick: false, gsCals: [] });
   setState({ phase: 'off', message: '' });
 }
 

@@ -5,7 +5,8 @@ import {
 } from '../utils.js';
 import { icon } from '../ui.js';
 import { isDone, tasksByDate, expandTasks, compareTasks, endTime, repeatLabel, isRepeating } from '../model.js';
-import { taskList, emptyState, goalsMap, occAttr, openTaskModal } from '../components.js';
+import { taskList, emptyState, goalsMap, occAttr, openTaskModal, eventList, evAttrs, evTimeText } from '../components.js';
+import { eventsBetween, groupByDay } from '../gsync.js';
 
 const ui = { mode: 'month', cursor: null, selected: null };
 
@@ -25,7 +26,22 @@ function goalFlags(goals) {
     .join('');
 }
 
-function monthView(state, today, byDate, deadlines) {
+// 一格裡的東西依時間排：整天的在前面，再依開始時間
+function cellEntries(key, items, evs) {
+  const entries = [
+    ...evs.map((ev) => ({
+      order: ev.allDay || ev.startKey < key ? '0a' : `1${ev.startTime}`,
+      html: `<button type="button" class="cal-item cal-ev"${evAttrs(ev)}>${!ev.allDay && ev.startKey === key ? `<span class="cal-time">${ev.startTime}</span>` : ''}<span class="cal-item-title">${esc(ev.title)}</span></button>`,
+    })),
+    ...items.map((t) => ({
+      order: t.time ? `1${t.time}` : '0b',
+      html: `<button type="button" class="cal-item prio-${t.priority}${isDone(t) ? ' is-done' : ''}${t.occ ? ' is-repeat' : ''}"${dragAttrs(t)} data-action="open-task" data-id="${esc(t.id)}"${occAttr(t)}>${t.time ? `<span class="cal-time">${t.time}</span>` : ''}<span class="cal-item-title">${esc(t.title)}</span></button>`,
+    })),
+  ];
+  return entries.sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
+}
+
+function monthView(state, today, byDate, deadlines, evByDate) {
   const { weekStart } = state.settings;
   const [y, m] = ui.cursor.split('-').map(Number);
   const weeks = monthGrid(y, m - 1, weekStart);
@@ -35,6 +51,7 @@ function monthView(state, today, byDate, deadlines) {
 
   const cell = (key) => {
     const items = byDate.get(key) || [];
+    const evs = evByDate.get(key) || [];
     const goals = deadlines.get(key) || [];
     const open = items.filter((t) => !isDone(t)).length;
     const cls = [
@@ -44,20 +61,22 @@ function monthView(state, today, byDate, deadlines) {
       key === ui.selected ? 'is-selected' : '',
       weekdayOf(key) === 0 ? 'is-sun' : '',
     ].join(' ');
-    const shown = items.slice(0, 3);
+    const entries = cellEntries(key, items, evs);
+    const shown = entries.slice(0, 3);
     return `<div class="${cls}" role="gridcell" data-action="cal-select" data-date="${key}" data-drop-date="${key}">
-      <button type="button" class="cal-num" data-action="cal-select" data-date="${key}" aria-pressed="${key === ui.selected}" aria-label="${fmtMonthDay(key)}${open ? `，${open} 個未完成任務` : ''}${goals.length ? `，${goals.length} 個目標到期` : ''}">${Number(key.slice(8))}</button>
+      <button type="button" class="cal-num" data-action="cal-select" data-date="${key}" aria-pressed="${key === ui.selected}" aria-label="${fmtMonthDay(key)}${open ? `，${open} 個未完成任務` : ''}${evs.length ? `，${evs.length} 個行程` : ''}${goals.length ? `，${goals.length} 個目標到期` : ''}">${Number(key.slice(8))}</button>
       <div class="cal-items">
         ${goalFlags(goals)}
-        ${shown.map((t) => `<button type="button" class="cal-item prio-${t.priority}${isDone(t) ? ' is-done' : ''}${t.occ ? ' is-repeat' : ''}"${dragAttrs(t)} data-action="open-task" data-id="${esc(t.id)}"${occAttr(t)}>${t.time ? `<span class="cal-time">${t.time}</span>` : ''}<span class="cal-item-title">${esc(t.title)}</span></button>`).join('')}
-        ${items.length > shown.length ? `<span class="cal-more">還有 ${items.length - shown.length} 個</span>` : ''}
+        ${shown.map((e) => e.html).join('')}
+        ${entries.length > shown.length ? `<span class="cal-more">還有 ${entries.length - shown.length} 個</span>` : ''}
       </div>
-      ${open || goals.length ? `<span class="cal-dots" aria-hidden="true">${'<i></i>'.repeat(Math.min(3, open))}${goals.length ? '<i class="is-goal"></i>' : ''}</span>` : ''}
+      ${open || goals.length || evs.length ? `<span class="cal-dots" aria-hidden="true">${'<i></i>'.repeat(Math.min(3, open))}${evs.length ? '<i class="is-ev"></i>' : ''}${goals.length ? '<i class="is-goal"></i>' : ''}</span>` : ''}
     </div>`;
   };
 
   const sel = ui.selected;
   const selTasks = byDate.get(sel) || [];
+  const selEvs = evByDate.get(sel) || [];
   const selGoals = deadlines.get(sel) || [];
   return `
     <div class="cal-month" role="grid" aria-label="${fmtYearMonth(y, m - 1)}">
@@ -73,19 +92,22 @@ function monthView(state, today, byDate, deadlines) {
         </div>
       </header>
       ${selGoals.length ? `<div class="agenda-goals">${goalFlags(selGoals)}</div>` : ''}
-      ${selTasks.length ? taskList(selTasks, { goalsById: goalsMap(), today, showDate: false }) : emptyState('這天沒有任務。')}
+      ${selEvs.length ? eventList(selEvs, sel) : ''}
+      ${selTasks.length ? taskList(selTasks, { goalsById: goalsMap(), today, showDate: false }) : selEvs.length ? '' : emptyState('這天沒有任務。')}
     </section>`;
 }
 
-function weekView(state, today, byDate, deadlines) {
+function weekView(state, today, byDate, deadlines, evByDate) {
   const keys = weekKeys(ui.cursor, state.settings.weekStart);
   return `<div class="cal-week">${keys.map((key) => {
     const items = byDate.get(key) || [];
+    const evs = evByDate.get(key) || [];
     const goals = deadlines.get(key) || [];
     const wd = weekdayOf(key);
     return `<section class="week-col${key === today ? ' is-today' : ''}${wd === 0 ? ' is-sun' : ''}" data-drop-date="${key}" aria-label="${fmtMonthDay(key)} ${fmtWeekday(key)}">
       <header class="week-col-head"><span class="week-wd">${WEEKDAYS[wd]}</span><span class="week-num">${Number(key.slice(8))}</span></header>
       ${goals.length ? `<div class="week-goals">${goalFlags(goals)}</div>` : ''}
+      ${evs.length ? eventList(evs, key, { showCal: false }) : ''}
       <ul class="week-items">${items.map((t) => `
         <li class="week-item prio-${t.priority}${isDone(t) ? ' is-done' : ''}${t.occ ? ' is-repeat' : ''}"${dragAttrs(t)}>
           <button type="button" class="check small" role="checkbox" aria-checked="${isDone(t)}" data-action="toggle-task" data-id="${esc(t.id)}"${occAttr(t)} aria-label="完成：${esc(t.title)}">${icon('check')}</button>
@@ -107,11 +129,9 @@ const toMin = (hhmm) => {
 };
 const pad2 = (n) => String(n).padStart(2, '0');
 
-// 時間重疊的任務並排放
-function layoutBlocks(items) {
-  const blocks = items
-    .map((t) => ({ t, start: toMin(t.time), end: Math.min(toMin(t.time) + (t.duration || 60), 24 * 60) }))
-    .sort((a, b) => a.start - b.start || b.end - a.end);
+// 時間重疊的任務和行程並排放（每個 block 都有 start、end，單位是分鐘）
+function layoutBlocks(blocks) {
+  blocks.sort((a, b) => a.start - b.start || b.end - a.end);
   let group = [];
   let groupEnd = -1;
   const flush = () => {
@@ -143,16 +163,38 @@ function dayView(state, today, deadlines) {
   const allDay = items.filter((t) => !t.time);
   const timed = items.filter((t) => t.time);
   const goals = deadlines.get(key) || [];
-  const earliest = timed.length ? Math.floor(toMin(timed[0].time) / 60) : 7;
+
+  // Google 日曆的行程：整天的（或跨過一整天的）放上面，其他的放進時間軸
+  const dayStart = fromKey(key).getTime();
+  const evAllDay = [];
+  const evBlocks = [];
+  for (const ev of eventsBetween(key, key)) {
+    const start = Math.max(0, Math.round((ev.startMs - dayStart) / 60_000));
+    const end = Math.min(24 * 60, Math.round((ev.endMs - dayStart) / 60_000));
+    if (ev.allDay || (start <= 0 && end >= 24 * 60)) evAllDay.push(ev);
+    else evBlocks.push({ ev, start, end: Math.min(Math.max(end, start + 15), 24 * 60) });
+  }
+  const taskBlocks = timed.map((t) => ({ t, start: toMin(t.time), end: Math.min(toMin(t.time) + (t.duration || 60), 24 * 60) }));
+  const all = [...taskBlocks, ...evBlocks];
+  const earliest = all.length ? Math.floor(Math.min(...all.map((b) => b.start)) / 60) : 7;
   const startHour = Math.min(7, earliest);
   const hours = [];
   for (let h = startHour; h < 24; h++) hours.push(h);
   const top = (min) => ((min - startHour * 60) / 60) * HOUR;
 
-  const blocks = layoutBlocks(timed).map(({ t, start, end, col, cols }) => {
+  const blocks = layoutBlocks(all).map(({ t, ev, start, end, col, cols }) => {
     const height = Math.max(((end - start) / 60) * HOUR - 4, 30);
     const short = height < 46;
-    return `<div class="day-block prio-${t.priority}${isDone(t) ? ' is-done' : ''}${short ? ' is-short' : ''}" style="top:${top(start) + 2}px;height:${height}px;left:calc(${(col / cols) * 100}% + 4px);width:calc(${100 / cols}% - 8px)">
+    const box = `top:${top(start) + 2}px;height:${height}px;left:calc(${(col / cols) * 100}% + 4px);width:calc(${100 / cols}% - 8px)`;
+    if (ev) {
+      return `<div class="day-block day-ev${short ? ' is-short' : ''}" style="--ev:${ev.color};${box}">
+        <button type="button" class="day-block-main" data-action="open-gevent" data-ev="${esc(ev.key)}" data-start="${ev.startMs}">
+          <span class="day-block-title">${esc(ev.title)}</span>
+          <span class="day-block-time">${evTimeText(ev, key)}${ev.calName ? `・${esc(ev.calName)}` : ''}</span>
+        </button>
+      </div>`;
+    }
+    return `<div class="day-block prio-${t.priority}${isDone(t) ? ' is-done' : ''}${short ? ' is-short' : ''}" style="${box}">
       <button type="button" class="check small" role="checkbox" aria-checked="${isDone(t)}" data-action="toggle-task" data-id="${esc(t.id)}"${occAttr(t)} aria-label="完成：${esc(t.title)}">${icon('check')}</button>
       <button type="button" class="day-block-main" data-action="open-task" data-id="${esc(t.id)}"${occAttr(t)}>
         <span class="day-block-title">${esc(t.title)}</span>
@@ -172,7 +214,8 @@ function dayView(state, today, deadlines) {
         <span class="day-allday-label">整天</span>
         <div class="day-allday-items">
           ${goalFlags(goals)}
-          ${allDay.length ? taskList(allDay, { goalsById: goalsMap(), today, showDate: false }) : goals.length ? '' : '<p class="hint">沒有整天的任務。</p>'}
+          ${evAllDay.length ? eventList(evAllDay, key) : ''}
+          ${allDay.length ? taskList(allDay, { goalsById: goalsMap(), today, showDate: false }) : goals.length || evAllDay.length ? '' : '<p class="hint">沒有整天的任務。</p>'}
         </div>
       </div>
       <div class="day-grid" style="height:${hours.length * HOUR}px">
@@ -205,20 +248,24 @@ export default {
     const { weekStart } = state.settings;
     let title;
     let byDate;
+    let evByDate = new Map();
     if (ui.mode === 'month') {
       title = fmtYearMonth(y, m - 1);
       const grid = monthGrid(y, m - 1, weekStart).flat();
-      byDate = tasksByDate(state.tasks, grid[0], grid[grid.length - 1]);
+      const [first, last] = [grid[0], grid[grid.length - 1]];
+      byDate = tasksByDate(state.tasks, first, last);
+      evByDate = groupByDay(eventsBetween(first, last), first, last);
     } else if (ui.mode === 'week') {
       const keys = weekKeys(ui.cursor, weekStart);
       title = `${fmtMonthDay(keys[0])} – ${fmtMonthDay(keys[6])}`;
       byDate = tasksByDate(state.tasks, keys[0], keys[6]);
+      evByDate = groupByDay(eventsBetween(keys[0], keys[6]), keys[0], keys[6]);
     } else {
       title = `${fmtMonthDay(ui.cursor)}<span class="view-sub">${fmtWeekday(ui.cursor)}${ui.cursor === today ? '，今天' : ''}</span>`;
     }
     const unit = { month: '個月', week: '週', day: '天' }[ui.mode];
-    const view = ui.mode === 'month' ? monthView(state, today, byDate, deadlines)
-      : ui.mode === 'week' ? weekView(state, today, byDate, deadlines) : dayView(state, today, deadlines);
+    const view = ui.mode === 'month' ? monthView(state, today, byDate, deadlines, evByDate)
+      : ui.mode === 'week' ? weekView(state, today, byDate, deadlines, evByDate) : dayView(state, today, deadlines);
     const tip = ui.mode === 'day' ? '提示：點時間軸上的空白時段，可以直接在那個時間新增任務。' : '提示：在電腦上可以直接把任務拖到別的日期（重複的任務除外）。';
 
     return `

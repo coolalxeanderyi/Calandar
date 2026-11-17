@@ -5,7 +5,8 @@ import { store } from '../store.js';
 import {
   isDone, compareTasks, goalProgress, deadlineInfo, activeHabits, isScheduled, listTasks, expandTasks,
 } from '../model.js';
-import { taskList, emptyState, habitCheck, progressBar, miniCalendar, goalsMap } from '../components.js';
+import { taskList, emptyState, habitCheck, progressBar, miniCalendar, goalsMap, eventList } from '../components.js';
+import { eventsBetween } from '../gsync.js';
 import { mascot } from '../mascot.js';
 
 const ui = { weekFilter: 'all', miniMonth: null };
@@ -23,13 +24,15 @@ export default {
     const items = listTasks(state.tasks, today);
     const overdue = items.filter((t) => !isDone(t) && t.date && t.date < today).sort(compareTasks);
     const todays = items.filter((t) => t.date === today).sort(byDoneThenOrder);
+    const events = eventsBetween(today, today); // Google 日曆的行程
     const left = overdue.length + todays.filter((t) => !isDone(t)).length;
     const allDone = todays.length > 0 && left === 0;
     const hour = new Date().getHours();
     const mood = allDone ? 'happy' : hour >= 23 || hour < 5 ? 'sleepy' : 'smile';
     const summary = left
-      ? `今天有 ${left} 件事要做，一件一件來就好。`
-      : allDone ? '今天的任務都完成了，辛苦了！' : '今天沒有排任務，可以喘口氣。';
+      ? `今天有 ${left} 件事要做${events.length ? `、${events.length} 個行程` : ''}，一件一件來就好。`
+      : allDone ? '今天的任務都完成了，辛苦了！'
+        : events.length ? `今天沒有排任務，有 ${events.length} 個行程。` : '今天沒有排任務，可以喘口氣。';
 
     const week = weekKeys(today, weekStart);
     const weekTasks = items
@@ -67,8 +70,9 @@ export default {
             <header class="block-head"><h3 id="b-today" class="tape tape-1"><span aria-hidden="true">☀️</span>今天</h3>
               <a class="link-btn" href="#/calendar?d=${today}&amp;mode=day">${icon('clock')}看時間軸</a></header>
             <div class="block-body">
+              ${events.length ? `<p class="list-label">Google 日曆的行程</p>${eventList(events, today)}` : ''}
               ${overdue.length ? `<p class="list-label is-over">逾期 ${overdue.length} 件</p>${taskList(overdue, { goalsById, today })}` : ''}
-              ${overdue.length && todays.length ? '<p class="list-label">今天</p>' : ''}
+              ${(overdue.length || events.length) && todays.length ? `<p class="list-label">${overdue.length ? '今天' : '今天的任務'}</p>` : ''}
               ${todays.length ? taskList(todays, { goalsById, today, showDate: false }) : overdue.length ? '' : emptyState('今天沒有排任務。')}
               <form class="quick-add" data-submit="quick-add" data-date="${today}">
                 <input name="title" data-keep="dash-quick" placeholder="新增今天的任務，按 Enter 加入" autocomplete="off" aria-label="新增今天的任務" maxlength="300">

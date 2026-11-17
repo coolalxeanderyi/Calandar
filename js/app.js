@@ -7,7 +7,7 @@ import { createLocalBackend, hasLocalData, localItems, readLocalData } from './b
 import { createFirebase } from './backend-firebase.js';
 import { toStored, normalizeSettings, usesMascot, isDone, isScheduled, listTasks } from './model.js';
 import { mascot } from './mascot.js';
-import { openTaskModal, openGoalModal, openHabitModal } from './components.js';
+import { openTaskModal, openGoalModal, openHabitModal, openEventModal } from './components.js';
 import { openSettings, openCoverPicker, openThemePicker } from './settings.js';
 import { applyAppearance, cachedPalette, savedMode, getTheme, tintFor, onSystemThemeChange } from './themes.js';
 import { initGcal, gcalState, onGcalChange, connect as gcalConnect, run as gcalRun, hasToken as gcalHasToken, forgetToken as gcalForgetToken } from './gcal.js';
@@ -18,6 +18,7 @@ import goals from './views/goals.js';
 import habits from './views/habits.js';
 import review from './views/review.js';
 import { startAutoUpdate } from './update.js';
+import { bridgeOn, onExternalChange, startExternal, clearExternal, findEvent } from './gsync.js';
 
 const MODE_KEY = 'planner.v1.mode';
 const README_URL = 'https://github.com/coolalxeanderyi/Calandar#readme';
@@ -201,6 +202,7 @@ async function signOut() {
   if (!ok) return;
   try {
     gcalForgetToken();
+    clearExternal();
     await firebase.auth.signOut();
     toast('已登出');
   } catch (err) {
@@ -563,10 +565,11 @@ const GCAL_AUTH_ERRORS = {
   'auth/network-request-failed': '連不上網路，請確認連線後再試一次。',
 };
 
-// 一定要在點擊事件裡直接呼叫（瀏覽器才會讓 Google 的視窗打開）
+// 用 Google 登入連接時，一定要在點擊事件裡直接呼叫（瀏覽器才會讓 Google 的視窗打開）；
+// 透過 Apps Script 連接時直接同步，不用開視窗
 async function syncCalendar({ askAgain = false } = {}) {
   try {
-    const result = askAgain || !gcalHasToken() ? await gcalConnect() : await gcalRun();
+    const result = bridgeOn() ? await gcalRun() : askAgain || !gcalHasToken() ? await gcalConnect() : await gcalRun();
     if (result) toast(result.changed ? `已同步到 Google 日曆（更新了 ${result.changed} 個行程）` : '已同步到 Google 日曆，沒有新的變更');
     return true;
   } catch (err) {
@@ -646,6 +649,10 @@ const GLOBAL_ACTIONS = {
     if (g) openGoalModal(g);
   },
   'new-goal': () => openGoalModal(),
+  'open-gevent': (el) => {
+    const ev = findEvent(el.dataset.ev, Number(el.dataset.start) || 0);
+    if (ev) openEventModal(ev);
+  },
   'open-settings': () => openSettings(env()),
   'open-cover': () => openCoverPicker(env()),
   'open-themes': () => openThemePicker(env()),
@@ -749,6 +756,11 @@ function wireEvents() {
   window.addEventListener('hashchange', onRoute);
   onSystemThemeChange(refreshLook);
   onGcalChange(renderGcalPill);
+  // Google 日曆的行程抓回來了：重畫目前的頁面
+  onExternalChange(() => {
+    if (root.querySelector('.shell') && store.state.status === 'ready') renderView();
+  });
+  startExternal();
 
   // 過了午夜自動更新「今天」
   const checkDay = () => {

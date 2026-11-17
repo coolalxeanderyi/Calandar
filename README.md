@@ -2,7 +2,7 @@
 
 把任務、行事曆、目標和習慣放在同一個網站裡，用 Google 帳號登入後，手機和電腦的資料會自動同步。
 版面參考 Notion 的 Planner OS 模板：上方是封面和分頁按鈕，下面是一塊一塊的區塊。
-可以從 30 套配色主題裡挑喜歡的，也可以把任務同步到 Google 日曆（iPhone 的「行事曆」也看得到）。
+可以從 30 套配色主題裡挑喜歡的，也可以跟 Google 日曆自動雙向同步（iPhone 的「行事曆」也看得到）。
 
 網站網址（開啟 GitHub Pages 之後）：<https://coolalxeanderyi.github.io/Calandar/>
 
@@ -30,7 +30,7 @@
 
   每一套都有淺色和深色版本，點一下就能先預覽，吉祥物、紙膠帶、按鈕和彩紙都會跟著換顏色
 - **封面**：32 種用程式畫的封面（雲朵、野餐格紋、糖霜彩針、珍珠奶茶、波點、海浪、檸檬片、星空、西瓜、橘子汽水、熱可可、聖誕、蘑菇、扶桑花、棉花糖、鬆餅、彩虹、莫蘭迪色塊、櫻花、向日葵、落葉、雪天、夜櫻、櫻花糰子、櫻吹雪、紅葉、紅葉山谷、楓糖，以及農田、海灘、梯田、沙丘空拍），格紋、彩針和波點會跟著主題換顏色
-- **Google 日曆同步**：有日期的任務和目標期限會出現在 Google 日曆裡一個叫「計劃版」的日曆（只動這個日曆，不碰你其他的行程）
+- **Google 日曆同步**：Google 日曆裡的行程會出現在計劃版；有日期的任務和目標期限會放進 Google 日曆裡一個叫「計劃版」的日曆（只動這個日曆，不碰你其他的行程）
 - **其他**：完成任務和打卡時的彩紙動畫、手機版的底部分頁列、可直接點標題改名、匯出／匯入備份、刪除後可以按「復原」、在電腦上按 <kbd>N</kbd> 可以快速新增任務
 - **自動更新**：每次打開、回到這個分頁，或每 5 分鐘，網站都會檢查有沒有新版本，有就自動換過去；正在輸入或開著視窗時會先問你
 - **離線也能用**：打開過一次之後，沒有網路也打得開網站，照樣可以新增和打卡，連上網路後自動同步。也可以加到手機主畫面，用起來像 App
@@ -92,24 +92,33 @@ export const firebaseConfig = {
 
 如果你之前在這台裝置用過試用模式，第一次登入時網站會問要不要把試用資料搬到帳號裡。
 
-### 7.（選用）同步到 Google 日曆
+### 7.（選用）同步 Google 日曆
 
-Firebase 專案背後就是一個 Google Cloud 專案，要在那邊打開日曆的功能：
+連接之後會自動雙向同步，不用再按任何按鈕：
 
-1. 打開 [Google Calendar API 的頁面](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=calender-6f8ad)（右上角要是你建立 Firebase 的那個 Google 帳號），按 **啟用（Enable）**。
-2. 建議也到 [Google Auth Platform → 資料存取（Data access）](https://console.cloud.google.com/auth/scopes?project=calender-6f8ad)，按「新增或移除範圍」，加入 `https://www.googleapis.com/auth/calendar.app.created`，再按儲存。這個權限只能「建立新的日曆，並管理這個日曆裡的行程」，看不到你其他的日曆。
-3. 到 [目標對象（Audience）](https://console.cloud.google.com/auth/audience?project=calender-6f8ad) 看「發布狀態」：
-   - 如果是 **測試中（Testing）**：在「測試使用者」加入你自己的 Google 帳號。測試模式的授權 7 天會過期，到時候網站會請你再按一次。
-   - 如果是 **已發布（In production）**：不用改。連接時會看到「Google 尚未驗證這個應用程式」，因為這是只有你自己用的網站，按「進階」→「前往 calender-6f8ad.firebaseapp.com」就能繼續。
-4. 回到網站：**設定 → Google 日曆 → 連接 Google 日曆**，允許權限後就會開始同步。
+- 你 Google 日曆裡的行程，會出現在計劃版的行事曆和「今天」（只會讀，不會改你其他的日曆）
+- 計劃版有日期的任務和目標期限，會放進 Google 日曆裡一個叫「計劃版」的日曆
+
+做法是在自己的 Google 帳號裡放一小段免費的程式（Google Apps Script）當橋樑。網站裡有一步一步的說明：登入後打開 **設定 → Google 日曆**，照著做一次就好（大約 5 分鐘，建議用電腦）：
+
+1. 按「複製程式碼」。程式碼裡有一組只屬於你的密碼，不要給別人。
+2. 打開 [Apps Script](https://script.google.com/home)，按「新專案」，把原本的內容刪掉、貼上程式碼、儲存。專案名稱可以改成「計劃版同步」。
+3. 左邊「服務」旁邊按「＋」，加入「Google Calendar API」。
+4. 「部署」→「新增部署作業」→ 類型選「網頁應用程式」，執行身分選「我」，誰可以存取選「所有人」，按「部署」。
+5. 授權時會看到「Google 尚未驗證這個應用程式」，因為這是你自己剛貼上的程式，按「進階」→「前往 計劃版同步（不安全）」→「允許」。
+6. 把「網頁應用程式」的網址（結尾是 `/exec`）貼回計劃版，按「連接」。
+
+連接之後可以在設定裡勾選要顯示哪些日曆。之後網站更新，大部分時候都不用動 Apps Script；如果設定裡提醒「Apps Script 的程式有新版本」，照提示重新複製、貼上，再到「部署 → 管理部署作業 → 編輯 → 新版本」更新一次就好（網址不會變）。
 
 同步的規則：
 
-- 有日期的任務會變成行程。有時間的是 1 小時的行程，開始前 10 分鐘提醒；沒有時間的是全天行程
+- 有日期的任務會變成行程。有時間的照設定的時長（預設 1 小時），開始前 10 分鐘提醒；沒有時間的是全天行程
 - 進行中目標的期限會變成全天行程（名稱前面有 🎯）
 - 完成的任務名稱前面會加上 ✅，顏色變灰，也不會再提醒
-- 重複的任務會變成 Google 日曆的「重複行程」，有設時長的話行程就是那麼長；每一次分開打勾只記在網站上，不會改到 Google 日曆
-- 只會從網站同步到 Google 日曆（單向）。請在網站上修改；在 Google 日曆裡直接改的話，下次同步會被蓋回來
+- 重複的任務會變成 Google 日曆的「重複行程」；每一次分開打勾只記在網站上
+- 「計劃版」日曆請在網站上修改；在 Google 日曆裡直接改的話，下次同步會被蓋回來。Google 日曆裡其他的行程，計劃版只會讀，想變成可以打勾的任務，點開行程按「變成任務」
+
+**另一種方式（不用 Apps Script）**：設定裡的「其他方式」可以直接用 Google 登入連接，但只會把任務放進 Google 日曆、看不到 Google 日曆的行程，而且 Google 給的通行證大約一小時就過期，有新的變更時要再按一次。用這個方式之前，要先在 Google Cloud 打開 [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=calender-6f8ad)，並在 [資料存取](https://console.cloud.google.com/auth/scopes?project=calender-6f8ad) 加入 `https://www.googleapis.com/auth/calendar.app.created` 這個範圍。
 
 **想在 iPhone、iPad 的「行事曆」App 看到**：在 iPhone 的「設定」裡把同一個 Google 帳號加入「行事曆」（設定 → App → 行事曆 → 行事曆帳號），再用瀏覽器打開 <https://calendar.google.com/calendar/syncselect>，勾選「計劃版」並儲存。Mac 的「行事曆」App 也是一樣的做法。
 
@@ -142,7 +151,9 @@ Calandar/
     ├── store.js            資料中心：讀寫任務、目標、習慣
     ├── model.js            資料格式、目標進度、習慣連續天數的計算
     ├── themes.js           30 套配色主題（淺色和深色）和分類
-    ├── gcal.js             Google 日曆同步
+    ├── gcal.js             把任務同步到 Google 日曆
+    ├── gsync.js            透過 Apps Script 連接 Google 日曆、讀回行程
+    ├── gas-code.js         要貼到 Apps Script 的程式碼
     ├── update.js           自動更新：發現網站更新了就重新載入
     ├── backend-firebase.js 雲端模式（Google 登入 + Firestore）
     ├── backend-local.js    試用模式（存在瀏覽器）

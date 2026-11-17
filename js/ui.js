@@ -26,6 +26,9 @@ const PATHS = {
   logout: '<path d="M14 4.5H6.5v15H14"/><path d="M10.5 12H20M16.5 8.5 20 12l-3.5 3.5"/>',
   google: '<path d="M20.5 12.2c0-.6-.1-1.2-.2-1.8H12v3.4h4.8a4.1 4.1 0 0 1-1.8 2.7v2.2h2.9c1.7-1.6 2.6-3.9 2.6-6.5Z" fill="#4285F4" stroke="none"/><path d="M12 21c2.4 0 4.5-.8 5.9-2.2L15 16.6c-.8.5-1.8.9-3 .9-2.3 0-4.3-1.6-5-3.7H4v2.3A9 9 0 0 0 12 21Z" fill="#34A853" stroke="none"/><path d="M7 13.8a5.4 5.4 0 0 1 0-3.5V8H4a9 9 0 0 0 0 8.1l3-2.3Z" fill="#FBBC05" stroke="none"/><path d="M12 6.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 0 0 4 8l3 2.3c.7-2.1 2.7-3.7 5-3.7Z" fill="#EA4335" stroke="none"/>',
   sparkle: '<path d="M12 4.5v15M4.5 12h15"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+  pin: '<path d="M12 20.5s-6.5-5.9-6.5-10.8a6.5 6.5 0 0 1 13 0c0 4.9-6.5 10.8-6.5 10.8Z"/><circle cx="12" cy="9.7" r="2.3"/>',
+  external: '<path d="M13.5 4.5h6v6"/><path d="M19.5 4.5 11 13"/><path d="M17.5 13.5v5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1h5"/>',
   edit: '<path d="M5 19h3.5L19 8.5 15.5 5 5 15.5V19Z"/><path d="m13.5 7 3.5 3.5"/>',
 };
 
@@ -98,7 +101,9 @@ export function openModal({
   }
 
   function onKey(e) {
-    if (root.lastElementChild !== backdrop) return; // 只處理最上層的對話框
+    // 只處理最上層的對話框（正在關掉的那個不算，才不會吃掉下一個對話框的 Esc）
+    const open = [...root.children].filter((el) => !el.classList.contains('closing'));
+    if (open[open.length - 1] !== backdrop) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       close();

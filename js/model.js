@@ -31,6 +31,11 @@ export const DEFAULT_SETTINGS = {
   gcalId: '',
   gcalHash: '',
   gcalAt: 0,
+  // 透過自己的 Google Apps Script 連接（網址和密碼），以及要在計劃版顯示哪些日曆
+  gsUrl: '',
+  gsKey: '',
+  gsPick: false, // false＝顯示 Google 日曆裡有勾選的日曆
+  gsCals: [],
 };
 
 // 重複：none（不重複）、daily、weekly（repeatDays 是星期幾，0＝星期日）、monthly（每月同一天）
@@ -163,6 +168,10 @@ export function normalizeSettings(raw = {}) {
     gcalId: str(s.gcalId, 300),
     gcalHash: str(s.gcalHash, 80),
     gcalAt: num(s.gcalAt),
+    gsUrl: /^https:\/\/script\.google\.com\//.test(str(s.gsUrl, 300)) ? str(s.gsUrl, 300) : '',
+    gsKey: /^[a-z0-9]{16,64}$/.test(str(s.gsKey, 64)) ? str(s.gsKey, 64) : '',
+    gsPick: s.gsPick === true,
+    gsCals: Array.isArray(s.gsCals) ? s.gsCals.filter((id) => typeof id === 'string' && id && id.length <= 300).slice(0, 50) : [],
   };
 }
 

@@ -1,6 +1,6 @@
 // 各畫面共用的區塊：任務列、進度條、習慣打卡鈕、小月曆，以及新增／編輯的對話框
 import {
-  esc, todayKey, relativeDay, diffDays, fmtMonthDay, fmtYearMonth, WEEKDAYS,
+  esc, todayKey, relativeDay, diffDays, fmtMonthDay, fmtWeekday, fmtYearMonth, WEEKDAYS,
   orderedWeekdays, monthGrid, monthKey, uid, weekdayOf,
 } from './utils.js';
 import { icon, openModal, confirmDialog, fieldError, toast } from './ui.js';
@@ -60,6 +60,62 @@ export function taskRow(task, { goalsById = new Map(), today = todayKey(), showD
       ${tags.length ? `<span class="task-tags">${tags.join('')}</span>` : ''}
     </button>
   </li>`;
+}
+
+// ---------- Google 日曆的行程（只讀） ----------
+// 在某一天顯示的時間：跨天的行程顯示「開始」「到幾點」或「整天」
+export function evTimeText(ev, day) {
+  if (ev.allDay) return '全天';
+  const starts = ev.startKey === day;
+  const ends = ev.endKey === day;
+  if (starts && ends) return `${ev.startTime}–${ev.endTime}`;
+  if (starts) return `${ev.startTime} 開始`;
+  if (ends) return `到 ${ev.endTime}`;
+  return '整天';
+}
+
+export const evAttrs = (ev) => ` data-action="open-gevent" data-ev="${esc(ev.key)}" data-start="${ev.startMs}" style="--ev:${ev.color}"`;
+
+export function eventList(events, day, { showCal = true } = {}) {
+  return `<ul class="gev-list">${events.map((ev) => {
+    const when = evTimeText(ev, day);
+    return `<li><button type="button" class="gev"${evAttrs(ev)} aria-label="${esc(`${ev.title}，${when}${ev.calName ? `，${ev.calName}` : ''}（Google 日曆）`)}">
+      <span class="gev-time">${when}</span><span class="gev-title">${esc(ev.title)}</span>${showCal && ev.calName ? `<span class="gev-cal">${esc(ev.calName)}</span>` : ''}
+    </button></li>`;
+  }).join('')}</ul>`;
+}
+
+export function openEventModal(ev) {
+  const sameDay = ev.startKey === ev.endKey;
+  const when = ev.allDay
+    ? (sameDay ? `${fmtMonthDay(ev.startKey)} ${fmtWeekday(ev.startKey)}，全天` : `${fmtMonthDay(ev.startKey)} – ${fmtMonthDay(ev.endKey)}，全天`)
+    : (sameDay ? `${fmtMonthDay(ev.startKey)} ${fmtWeekday(ev.startKey)} ${ev.startTime}–${ev.endTime}` : `${fmtMonthDay(ev.startKey)} ${ev.startTime} – ${fmtMonthDay(ev.endKey)} ${ev.endTime}`);
+  const minutes = Math.round((ev.endMs - ev.startMs) / 60_000);
+  openModal({
+    title: ev.title,
+    size: 'sm',
+    cancelLabel: '關閉',
+    body: `<div class="gev-detail" style="--ev:${ev.color}">
+        <p class="gev-row">${icon('clock')}<span>${esc(when)}</span></p>
+        ${ev.location ? `<p class="gev-row">${icon('pin')}<span>${esc(ev.location)}</span></p>` : ''}
+        <p class="gev-row"><span class="gs-swatch" aria-hidden="true"></span><span>${esc(ev.calName || 'Google 日曆')}</span></p>
+        <p class="hint">這是 Google 日曆裡的行程，要修改請到 Google 日曆。想在計劃版打勾追蹤的話，可以把它變成任務。</p>
+        ${ev.link ? `<div class="btn-row"><a class="btn small ghost" href="${esc(ev.link)}" target="_blank" rel="noopener">${icon('external')}在 Google 日曆打開</a></div>` : ''}
+      </div>`,
+    extra: [{
+      label: '變成任務',
+      icon: 'plus',
+      onClick: () => {
+        const defaults = { title: ev.title, date: ev.startKey, notes: ev.location ? `地點：${ev.location}` : '' };
+        if (!ev.allDay) {
+          defaults.time = ev.startTime;
+          if (sameDay && minutes > 0) defaults.duration = Math.min(Math.max(minutes, 15), 24 * 60);
+        }
+        // 等這個視窗關掉、焦點回去之後再開任務視窗
+        setTimeout(() => openTaskModal(null, defaults), 0);
+      },
+    }],
+  });
 }
 
 export function taskList(tasks, opts) {

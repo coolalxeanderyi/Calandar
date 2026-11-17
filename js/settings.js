@@ -7,7 +7,11 @@ import { COVER_STYLES, coverSVG, randomSeed } from './covers.js';
 import { mascot } from './mascot.js';
 import { usesMascot } from './model.js';
 import { THEMES, THEME_GROUPS, getTheme, tintFor, varsStyle } from './themes.js';
-import { gcalState, onGcalChange, disconnect as gcalDisconnect, CALENDAR_NAME } from './gcal.js';
+import { gcalState, onGcalChange, disconnect as gcalDisconnect, setPush as gcalSetPush, CALENDAR_NAME } from './gcal.js';
+import {
+  bridgeOn, pingBridge, refreshInfo, checkScriptUrl, newKey, externalState, pickerCalendars, onExternalChange, reloadExternal,
+} from './gsync.js';
+import { scriptCode, SCRIPT_VERSION } from './gas-code.js';
 
 const ICONS = ['🌸', '📒', '🌈', '🍓', '🧋', '⭐', '🍀'];
 const MODES = [['auto', '跟著系統'], ['light', '淺色'], ['dark', '深色']];
@@ -26,6 +30,7 @@ export function openSettings(env, { focus } = {}) {
 
   let stopGcal = () => {};
   let stopStore = () => {};
+  let stopExternal = () => {};
 
   openModal({
     title: '設定',
@@ -85,6 +90,8 @@ export function openSettings(env, { focus } = {}) {
       };
       stopGcal = onGcalChange(refreshGcal);
       stopStore = store.subscribe(refreshGcal);
+      stopExternal = onExternalChange(refreshGcal);
+      if (bridgeOn()) refreshInfo({ force: true }); // 順便更新日曆清單、檢查 Apps Script 的版本
 
       if (focus === 'gcal') {
         const sec = form.querySelector('[data-gcal-sec]');
@@ -121,6 +128,32 @@ export function openSettings(env, { focus } = {}) {
           env.syncCalendar({ askAgain: !!e.target.closest('[data-gcal-connect]') });
           return;
         }
+        if (e.target.closest('[data-gs-copy]')) {
+          e.preventDefault();
+          copyScript(form, e.target.closest('[data-gs-copy]'));
+          return;
+        }
+        if (e.target.closest('[data-gs-download]')) {
+          e.preventDefault();
+          downloadFile('計劃版同步.gs', scriptCode(ensureKey()), 'text/plain');
+          return;
+        }
+        if (e.target.closest('[data-gs-connect]')) {
+          e.preventDefault();
+          connectBridge(form);
+          return;
+        }
+        if (e.target.closest('[data-gs-off]')) {
+          e.preventDefault();
+          const ok = await confirmDialog(`計劃版不會再顯示 Google 日曆的行程，也不會再把任務放進 Google 日曆。已經放進「${CALENDAR_NAME}」日曆的行程會留著。Apps Script 的專案還在你的 Google 帳號裡，不用的話可以到 script.google.com 刪掉。`, {
+            title: '中斷 Google 日曆的連接？',
+            confirmLabel: '中斷連接',
+          });
+          if (!ok) return;
+          gcalDisconnect();
+          toast('已中斷 Google 日曆的連接');
+          return;
+        }
         if (e.target.closest('[data-gcal-off]')) {
           e.preventDefault();
           const ok = await confirmDialog(`之後的變更不會再送到 Google 日曆。已經同步過去的行程會留在「${CALENDAR_NAME}」日曆裡，不想要的話可以在 Google 日曆刪掉整個日曆。`, {
@@ -155,6 +188,26 @@ export function openSettings(env, { focus } = {}) {
           env.leaveDemo();
         }
       });
+      // Google 日曆：勾選要顯示的日曆、開關「把任務放進 Google 日曆」
+      form.addEventListener('change', (e) => {
+        if (e.target.matches('[data-gs-cal]')) {
+          const ids = [...form.querySelectorAll('[data-gs-cal]:checked')].map((el) => el.value);
+          store.saveSettings({ gsPick: true, gsCals: ids });
+          reloadExternal();
+        } else if (e.target.matches('[data-gs-push]')) {
+          gcalSetPush(e.target.checked);
+        }
+      });
+      form.addEventListener('input', (e) => {
+        if (e.target.matches('[data-gs-url]')) urlDraft = e.target.value;
+      });
+      // 在網址欄按 Enter 是「連接」，不是儲存整個設定
+      form.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.matches('[data-gs-url]')) {
+          e.preventDefault();
+          connectBridge(form);
+        }
+      });
       form.querySelector('[data-import-file]').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         e.target.value = '';
@@ -185,6 +238,7 @@ export function openSettings(env, { focus } = {}) {
     onClose() {
       stopGcal();
       stopStore();
+      stopExternal();
     },
     onSubmit(form) {
       const f = form.elements;
@@ -207,7 +261,13 @@ function themeCurrent(paletteId) {
 }
 
 // ---------- 設定裡的 Google 日曆 ----------
-const sectionKey = () => `${store.state.mode}|${store.state.settings.gcalOn}|${gcalState().phase === 'error'}`;
+function sectionKey() {
+  const { mode, settings: s } = store.state;
+  const base = `${mode}|${s.gcalOn}|${gcalState().phase === 'error'}|${bridgeOn()}`;
+  if (!bridgeOn()) return base;
+  const ext = externalState();
+  return `${base}|${ext.hasInfo}|${ext.version}|${ext.infoError}|${ext.error}|${pickerCalendars().map((c) => `${c.id}:${c.checked}`).join()}`;
+}
 
 function statusInfo() {
   const { phase, message } = gcalState();
@@ -227,7 +287,7 @@ function lastSyncText() {
   return `上次同步：${day} ${hm}`;
 }
 
-// 第一次使用前要在 Google Cloud 做的設定（直接連到這個 Firebase 專案的頁面）
+// 用 Google 登入連接（舊方式）前，要在 Google Cloud 做的設定（直接連到這個 Firebase 專案的頁面）
 function setupSteps(env, { open = false } = {}) {
   const q = env.projectId ? `?project=${encodeURIComponent(env.projectId)}` : '';
   return `<details class="gcal-help"${open ? ' open' : ''}>
@@ -241,33 +301,7 @@ function setupSteps(env, { open = false } = {}) {
     </details>`;
 }
 
-function gcalSection(env) {
-  const head = `<h3 class="sub-title" id="st-gcal">Google 日曆</h3>`;
-  const { mode, settings: s } = store.state;
-  if (mode !== 'cloud') {
-    return `${head}
-      <p class="settings-text">登入 Google 之後，可以把有日期的任務和目標期限同步到 Google 日曆，iPhone 的「行事曆」也看得到。</p>
-      ${env.configured ? `<div class="btn-row"><button type="button" class="btn" data-leave-demo>${icon('google')}用 Google 登入</button></div>` : ''}`;
-  }
-  if (!s.gcalOn) {
-    return `${head}
-      <p class="settings-text">把有日期的任務和目標期限，同步到 Google 日曆裡一個叫「${CALENDAR_NAME}」的新日曆。只會動這個日曆，不會碰你其他的行程。</p>
-      ${setupSteps(env)}
-      <div class="btn-row"><button type="button" class="btn primary" data-gcal-connect>${icon('calendar')}連接 Google 日曆</button></div>
-      <p class="hint">第一次連接時，Google 會請你允許「建立日曆並管理裡面的行程」。如果看到「Google 尚未驗證這個應用程式」，按「進階」再按「前往」就可以繼續。</p>`;
-  }
-  const [cls, text] = statusInfo();
-  return `${head}
-    <p class="settings-text gcal-status is-${cls}" data-gcal-status role="status">${esc(text)}</p>
-    <p class="hint" data-gcal-last>${lastSyncText()}</p>
-    <p class="hint">有時間的任務會變成 1 小時的行程，開始前 10 分鐘提醒；沒有時間的是全天行程。在這裡修改，Google 日曆會跟著更新。</p>
-    <div class="btn-row">
-      <button type="button" class="btn" data-gcal-sync>${icon('repeat')}立即同步</button>
-      <a class="btn ghost" href="https://calendar.google.com/" target="_blank" rel="noopener">打開 Google 日曆</a>
-      <button type="button" class="btn ghost danger-text" data-gcal-off>停止同步</button>
-    </div>
-    ${gcalState().phase === 'error' ? setupSteps(env, { open: /API/.test(gcalState().message) }) : ''}
-    <details class="gcal-help">
+const iphoneHelp = () => `<details class="gcal-help">
       <summary>想在 iPhone、iPad 的「行事曆」App 看到？</summary>
       <ol>
         <li>在 iPhone 的「設定」裡找到「行事曆」，在「行事曆帳號」加入同一個 Google 帳號（已經加過就跳過）。</li>
@@ -275,6 +309,200 @@ function gcalSection(env) {
         <li>回到「行事曆」App，就會看到「${CALENDAR_NAME}」這個日曆。</li>
       </ol>
     </details>`;
+
+// ---- 透過自己的 Apps Script 連接（建議的方式） ----
+let draftKey = '';
+let urlDraft = '';
+
+// 每個人的程式碼裡都有一組只屬於他的密碼；第一次複製時產生，存在設定裡（換裝置也一樣）
+function ensureKey() {
+  const s = store.state.settings;
+  if (s.gsKey) return s.gsKey;
+  if (!draftKey) {
+    draftKey = newKey();
+    store.saveSettings({ gsKey: draftKey });
+  }
+  return draftKey;
+}
+
+async function copyScript(form, btn) {
+  const code = scriptCode(ensureKey());
+  const box = btn.closest('li, details')?.querySelector('[data-gs-code]');
+  try {
+    await navigator.clipboard.writeText(code);
+    if (box) box.hidden = true;
+    toast('已複製程式碼，接著貼到 Apps Script');
+  } catch {
+    // 有些瀏覽器不讓網站直接寫入剪貼簿：把程式碼放在框框裡，選好讓使用者自己複製
+    if (box) {
+      box.value = code;
+      box.hidden = false;
+      box.focus();
+      box.select();
+    }
+    toast('沒辦法自動複製。程式碼已經放在框框裡並選好了，請自己按「複製」。', { duration: 8000 });
+  }
+}
+
+async function connectBridge(form) {
+  const input = form.querySelector('[data-gs-url]');
+  const msg = form.querySelector('[data-gs-msg]');
+  const btn = form.querySelector('[data-gs-connect]');
+  if (!input || !btn || btn.disabled) return;
+  const say = (text, tone = '') => {
+    msg.textContent = text;
+    msg.className = `hint gs-msg${tone ? ` is-${tone}` : ''}`;
+  };
+  const { url, error } = checkScriptUrl(input.value);
+  if (error) {
+    say(error, 'error');
+    input.focus();
+    return;
+  }
+  const key = store.state.settings.gsKey || draftKey;
+  if (!key) {
+    say('請先按第 1 步的「複製程式碼」，貼到 Apps Script 並部署之後再連接。', 'error');
+    return;
+  }
+  btn.disabled = true;
+  say('連接中…');
+  try {
+    const found = await pingBridge({ url, key });
+    store.saveSettings({ gsUrl: url, gsKey: key, gcalOn: true, gcalHash: '', gsPick: false, gsCals: [] });
+    draftKey = '';
+    urlDraft = '';
+    toast(`已連接 Google 日曆（找到 ${found.calendars.length} 個日曆）`);
+  } catch (err) {
+    say(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const copyButtons = `<div class="btn-row">
+    <button type="button" class="btn small" data-gs-copy>${icon('copy')}複製程式碼</button>
+    <button type="button" class="btn small ghost" data-gs-download>${icon('download')}下載成檔案</button>
+  </div>
+  <textarea class="gs-code" readonly hidden data-gs-code aria-label="Apps Script 的程式碼" rows="6"></textarea>`;
+
+function bridgeSetup() {
+  return `<div class="gs-setup">
+      <p class="settings-text">連接之後會自動同步，不用再按任何按鈕：</p>
+      <ul class="gs-points">
+        <li>你在 Google 日曆裡的行程，會出現在計劃版的行事曆和「今天」（只會讀，不會改）</li>
+        <li>計劃版有日期的任務和目標期限，會放進 Google 日曆裡一個叫「${CALENDAR_NAME}」的日曆</li>
+      </ul>
+      <p class="hint">做法是在你的 Google 帳號裡放一小段免費的程式（Google Apps Script）當橋樑。照下面做一次就好，大約 5 分鐘，建議用電腦。</p>
+      <ol class="gs-steps">
+        <li><span class="gs-step-title">複製程式碼</span>
+          ${copyButtons}
+          <p class="hint">程式碼裡有一組只屬於你的密碼，不要給別人。</p>
+        </li>
+        <li><span class="gs-step-title">貼到 Apps Script</span>
+          <p>打開 <a href="https://script.google.com/home" target="_blank" rel="noopener">Apps Script</a>，按左上角的「新專案」（New project）。把編輯器裡原本的內容全部刪掉，貼上剛剛複製的程式碼，按「儲存」💾。左上角的「未命名的專案」可以改成「計劃版同步」。</p>
+        </li>
+        <li><span class="gs-step-title">加入日曆服務</span>
+          <p>左邊「服務」（Services）旁邊按「＋」，選「Google Calendar API」，按「新增」（Add）。</p>
+        </li>
+        <li><span class="gs-step-title">部署</span>
+          <p>右上角按「部署」（Deploy）→「新增部署作業」（New deployment）→ 按齒輪選「網頁應用程式」（Web app）。「執行身分」（Execute as）選「我」（Me），「誰可以存取」（Who has access）選「所有人」（Anyone），按「部署」（Deploy）。</p>
+        </li>
+        <li><span class="gs-step-title">授權</span>
+          <p>按「授予存取權」（Authorize access），選你的 Google 帳號。看到「Google 尚未驗證這個應用程式」時，按「進階」（Advanced）→「前往 計劃版同步（不安全）」→「允許」（Allow）。這是你自己剛貼上的程式，所以沒關係。</p>
+        </li>
+        <li><span class="gs-step-title">貼上網址</span>
+          <p>複製「網頁應用程式」下面的網址（開頭是 https://script.google.com/macros/s/，結尾是 /exec），貼在這裡：</p>
+          <div class="gs-connect">
+            <input type="url" inputmode="url" autocomplete="off" spellcheck="false" data-gs-url value="${esc(urlDraft)}" aria-label="Apps Script 網頁應用程式的網址" placeholder="https://script.google.com/macros/s/…/exec">
+            <button type="button" class="btn primary" data-gs-connect>${icon('calendar')}連接</button>
+          </div>
+          <p class="hint gs-msg" data-gs-msg role="status" aria-live="polite"></p>
+        </li>
+      </ol>
+    </div>`;
+}
+
+function bridgeStatus() {
+  const s = store.state.settings;
+  const ext = externalState();
+  const cals = pickerCalendars();
+  const [cls, text] = statusInfo();
+  const calList = cals.length
+    ? `<div class="gs-cal-list">${cals.map((c) => `
+        <label class="gs-cal"><input type="checkbox" data-gs-cal value="${esc(c.id)}"${c.checked ? ' checked' : ''}><span class="gs-swatch" style="--ev:${c.color}" aria-hidden="true"></span><span class="gs-cal-name">${esc(c.name)}</span></label>`).join('')}</div>`
+    : `<p class="hint">${ext.infoError ? esc(ext.infoError) : '正在讀取你的日曆清單…'}</p>`;
+  return `
+    <p class="settings-text gs-on">${icon('check')}已連接，會自動同步。</p>
+    ${ext.version && ext.version < SCRIPT_VERSION ? '<p class="gs-warn" role="status">Apps Script 裡的程式有新版本了。請照下面「更新 Apps Script」的步驟換成新的程式碼。</p>' : ''}
+    <fieldset class="field gs-cals"><legend>在計劃版顯示這些日曆的行程</legend>
+      ${calList}
+      ${ext.error ? `<p class="hint is-error" role="status">${esc(ext.error)}</p>` : ''}
+    </fieldset>
+    <div class="field">
+      <label class="gs-toggle"><input type="checkbox" data-gs-push${s.gcalOn ? ' checked' : ''}><span>把計劃版有日期的任務和目標期限，放進 Google 日曆的「${CALENDAR_NAME}」日曆</span></label>
+      ${s.gcalOn ? `<p class="settings-text gcal-status is-${cls}" data-gcal-status role="status">${esc(text)}</p>
+      <p class="hint" data-gcal-last>${lastSyncText()}</p>` : ''}
+    </div>
+    <div class="btn-row">
+      ${s.gcalOn ? `<button type="button" class="btn" data-gcal-sync>${icon('repeat')}立即同步</button>` : ''}
+      <a class="btn ghost" href="https://calendar.google.com/" target="_blank" rel="noopener">打開 Google 日曆</a>
+      <button type="button" class="btn ghost danger-text" data-gs-off>中斷連接</button>
+    </div>
+    ${iphoneHelp()}
+    <details class="gcal-help"${ext.version && ext.version < SCRIPT_VERSION ? ' open' : ''}>
+      <summary>更新 Apps Script，或同步出問題了</summary>
+      <ol>
+        <li>重新複製程式碼：${copyButtons}</li>
+        <li>打開 <a href="https://script.google.com/home" target="_blank" rel="noopener">Apps Script</a>，點「計劃版同步」這個專案，把裡面的程式全部換成剛複製的，按「儲存」💾。</li>
+        <li>右上角「部署」→「管理部署作業」（Manage deployments）→ 按鉛筆圖示（編輯）→「版本」選「新版本」（New version）→「部署」。網址不會變，不用重新貼。</li>
+      </ol>
+      <p class="hint">如果顯示「需要再授權一次」：在 Apps Script 上方的函式選單選 test，按「執行」（Run），允許權限就好。</p>
+    </details>`;
+}
+
+// 用 Google 登入連接（舊方式）中的狀態
+function legacyStatus(env) {
+  const [cls, text] = statusInfo();
+  return `
+    <p class="settings-text gcal-status is-${cls}" data-gcal-status role="status">${esc(text)}</p>
+    <p class="hint" data-gcal-last>${lastSyncText()}</p>
+    <p class="hint">有時間的任務會照時長變成行程，開始前 10 分鐘提醒；沒有時間的是全天行程。在這裡修改，Google 日曆會跟著更新。</p>
+    <div class="btn-row">
+      <button type="button" class="btn" data-gcal-sync>${icon('repeat')}立即同步</button>
+      <a class="btn ghost" href="https://calendar.google.com/" target="_blank" rel="noopener">打開 Google 日曆</a>
+      <button type="button" class="btn ghost danger-text" data-gcal-off>停止同步</button>
+    </div>
+    ${gcalState().phase === 'error' ? setupSteps(env, { open: /API/.test(gcalState().message) }) : ''}
+    ${iphoneHelp()}`;
+}
+
+function legacyConnect(env) {
+  return `<details class="gcal-help gs-legacy">
+      <summary>不想用 Apps Script？改用 Google 登入連接（每小時要重新確認一次）</summary>
+      <p class="settings-text">這個方式只會把任務放進 Google 日曆，看不到 Google 日曆裡的行程。Google 給的通行證大約一小時就會過期，有新的變更時要再按一次。</p>
+      ${setupSteps(env)}
+      <div class="btn-row"><button type="button" class="btn" data-gcal-connect>${icon('calendar')}用 Google 登入連接</button></div>
+      <p class="hint">第一次連接時，Google 會請你允許「建立日曆並管理裡面的行程」。如果看到「Google 尚未驗證這個應用程式」，按「進階」再按「前往」就可以繼續。</p>
+    </details>`;
+}
+
+function gcalSection(env) {
+  const head = `<h3 class="sub-title" id="st-gcal">Google 日曆</h3>`;
+  const { mode, settings: s } = store.state;
+  if (mode !== 'cloud') {
+    return `${head}
+      <p class="settings-text">登入 Google 之後，可以把 Google 日曆的行程放進計劃版，也可以把有日期的任務和目標期限放進 Google 日曆，iPhone 的「行事曆」也看得到。</p>
+      ${env.configured ? `<div class="btn-row"><button type="button" class="btn" data-leave-demo>${icon('google')}用 Google 登入</button></div>` : ''}`;
+  }
+  if (bridgeOn()) return `${head}${bridgeStatus()}`;
+  if (s.gcalOn) {
+    return `${head}${legacyStatus(env)}
+      <details class="gcal-help gs-upgrade" open>
+        <summary>改用自動同步（建議）：不用再每小時確認，還能在計劃版看到 Google 日曆的行程</summary>
+        ${bridgeSetup()}
+      </details>`;
+  }
+  return `${head}${bridgeSetup()}${legacyConnect(env)}`;
 }
 
 // ---------- 換主題 ----------

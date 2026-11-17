@@ -224,11 +224,13 @@ export const store = {
 
   // ---- 備份 ----
   exportData() {
+    // 連接 Google 日曆用的網址和密碼不放進備份檔，免得分享備份檔時一起給出去
+    const { gsUrl, gsKey, ...settings } = state.settings;
     return {
       app: 'planner',
       version: 1,
       exportedAt: new Date().toISOString(),
-      settings: state.settings,
+      settings,
       tasks: state.tasks,
       goals: state.goals,
       habits: state.habits,

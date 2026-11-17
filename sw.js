@@ -1,7 +1,7 @@
 // 離線也能打開：把網站本身的檔案存在瀏覽器裡。
 // 任務、目標這些資料本來就由 Firestore 的離線快取處理，這裡只管網頁檔案。
 // 網站更新時把 VERSION 改成新的值（跟 js/update.js 的 APP_BUILD 一樣），舊的快取就會被清掉。
-const VERSION = 'planner-2026-11-16-1';
+const VERSION = 'planner-2026-11-16-2';
 
 const SHELL = [
   './',
@@ -18,7 +18,9 @@ const SHELL = [
   './js/components.js',
   './js/covers.js',
   './js/firebase-sdk.js',
+  './js/gas-code.js',
   './js/gcal.js',
+  './js/gsync.js',
   './js/mascot.js',
   './js/model.js',
   './js/settings.js',
