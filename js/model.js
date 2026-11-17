@@ -70,7 +70,23 @@ export const DEFAULT_SETTINGS = {
   backupOn: true,
   backupDay: '',
   backupUrl: '',
+  // 記帳簿：預設貨幣（空的＝依時區猜）、每月支出預算（0＝沒有）、自訂分類（空的＝用預設分類）
+  currency: '',
+  budget: 0,
+  ledgerCats: [],
 };
+
+// ---- 記帳簿 ----
+// [代碼, 符號, 名稱, 小數位數]
+export const CURRENCIES = [
+  ['TWD', 'NT$', '新台幣', 0], ['GBP', '£', '英鎊', 2], ['USD', 'US$', '美元', 2], ['EUR', '€', '歐元', 2],
+  ['JPY', '¥', '日圓', 0], ['HKD', 'HK$', '港幣', 2], ['CNY', 'CN¥', '人民幣', 2], ['KRW', '₩', '韓元', 0],
+  ['AUD', 'A$', '澳幣', 2], ['CAD', 'C$', '加幣', 2], ['SGD', 'S$', '新加坡幣', 2], ['MYR', 'RM', '馬幣', 2],
+];
+export const CURRENCY_IDS = CURRENCIES.map((c) => c[0]);
+export const MONEY_MAX = 1e9;
+export const MAX_LEDGER_CATS = 40;
+const money = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(Math.round(v * 100) / 100, MONEY_MAX) : null);
 
 // 重複：none（不重複）、daily、weekly（repeatDays 是星期幾，0＝星期日）、monthly（每月同一天）
 export const REPEAT_LABEL = { none: '不重複', daily: '每天', weekly: '每週', monthly: '每月' };
@@ -83,6 +99,8 @@ const DEFAULTS = {
     repeat: 'none', repeatDays: [], repeatUntil: '', doneOn: {}, checklist: [], tags: [], remind: null, doneAt: null, createdAt: 0, updatedAt: 0,
   }),
   journal: () => ({ date: '', mood: 0, text: '', createdAt: 0, updatedAt: 0 }),
+  shopping: () => ({ name: '', qty: '', store: '', price: null, note: '', done: false, doneAt: null, createdAt: 0, updatedAt: 0 }),
+  ledger: () => ({ type: 'out', amount: 0, currency: '', cat: '', title: '', date: '', note: '', createdAt: 0, updatedAt: 0 }),
   reviews: () => ({ week: '', wins: '', improve: '', focus: ['', '', ''], createdAt: 0, updatedAt: 0 }),
   goals: () => ({ title: '', why: '', area: '', emoji: '🎯', deadline: '', status: 'active', progressMode: 'tasks', progress: 0, doneAt: null, createdAt: 0, updatedAt: 0 }),
   habits: () => ({ name: '', emoji: '✅', days: [...ALL_DAYS], log: {}, archived: false, order: 0, createdAt: 0, updatedAt: 0 }),
@@ -191,6 +209,34 @@ export function normalize(col, raw = {}) {
       updatedAt: num(d.updatedAt),
     };
   }
+  if (col === 'shopping') {
+    return {
+      id: raw.id,
+      name: str(d.name, 120),
+      qty: str(d.qty, 20),
+      store: str(d.store, 30),
+      price: money(d.price),
+      note: str(d.note, 300),
+      done: !!d.done,
+      doneAt: typeof d.doneAt === 'number' ? d.doneAt : null,
+      createdAt: num(d.createdAt),
+      updatedAt: num(d.updatedAt),
+    };
+  }
+  if (col === 'ledger') {
+    return {
+      id: raw.id,
+      type: d.type === 'in' ? 'in' : 'out',
+      amount: money(d.amount) ?? 0,
+      currency: oneOf(d.currency, CURRENCY_IDS, ''),
+      cat: typeof d.cat === 'string' && ID_RE.test(d.cat) ? d.cat : '',
+      title: str(d.title, 100),
+      date: date(d.date),
+      note: str(d.note, 500),
+      createdAt: num(d.createdAt),
+      updatedAt: num(d.updatedAt),
+    };
+  }
   if (col === 'goals') {
     return {
       id: raw.id,
@@ -265,7 +311,26 @@ export function normalizeSettings(raw = {}) {
     backupOn: s.backupOn !== false,
     backupDay: date(s.backupDay),
     backupUrl: /^https:\/\/drive\.google\.com\//.test(str(s.backupUrl, 300)) ? str(s.backupUrl, 300) : '',
+    currency: oneOf(s.currency, CURRENCY_IDS, ''),
+    budget: money(s.budget) ?? 0,
+    ledgerCats: catList(s.ledgerCats),
   };
+}
+
+// 記帳的分類 [{ id, type: 'out'|'in', name, emoji }]
+function catList(v) {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const c of v) {
+    if (!c || typeof c !== 'object' || typeof c.id !== 'string' || !ID_RE.test(c.id) || seen.has(c.id)) continue;
+    const name = str(c.name, 12).trim();
+    if (!name) continue;
+    seen.add(c.id);
+    const type = c.type === 'in' ? 'in' : 'out';
+    out.push({ id: c.id, type, name, emoji: str(c.emoji, 16).trim() || (type === 'in' ? '💰' : '📦') });
+  }
+  return out.slice(0, MAX_LEDGER_CATS);
 }
 
 // 存檔用：去掉 id 欄位

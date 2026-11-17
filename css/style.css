@@ -1356,3 +1356,90 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 /* 「沒有日期」那一組的標題列：右邊有「全部排到今天」 */
 .group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0 0 4px; padding-bottom: 6px; border-bottom: 2px solid var(--line); }
 .group-head .group-title { margin: 0; padding-bottom: 0; border-bottom: 0; }
+
+/* ---------- 購物清單 ---------- */
+.shop-add, .money-add { grid-template-columns: minmax(0, 1fr) auto; }
+.money-add { grid-template-columns: minmax(0, 1fr) auto auto; }
+.shop-toolbar { justify-content: space-between; }
+.shop-sum { flex: 1; color: var(--ink-3); font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; }
+.tag.tag-price { background: var(--butter-soft, var(--wash)); font-variant-numeric: tabular-nums; }
+.shop-note { color: var(--ink-3); font-size: 13px; }
+.shop-item.is-done .task-title { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--accent); }
+.shop-bought { opacity: 0.85; }
+
+/* ---------- 記帳簿 ---------- */
+.money-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 24px 0 14px; }
+.money-nav { display: flex; align-items: center; gap: 8px; }
+.money-month { min-width: 8.5em; margin: 0; font-size: 21px; text-align: center; }
+.money-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.money-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 16px; border: 2px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: 0 4px 0 var(--line); }
+.money-stat-label { color: var(--ink-2); font-size: 14px; }
+.money-stat-num { overflow: hidden; color: var(--ink); font-size: 24px; line-height: 1.25; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.money-stat-num.is-neg { color: var(--coral-text); }
+.money-others { margin: 8px 0 0; }
+.money-budget { margin-top: 14px; padding: 12px 16px; border: 2px solid var(--line); border-radius: 22px; background: var(--paper); }
+.money-budget-head { display: flex; justify-content: space-between; color: var(--ink-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.money-budget-track { height: 12px; margin: 6px 0 8px; overflow: hidden; border-radius: 999px; background: var(--wash); }
+.money-budget-track span { display: block; height: 100%; border-radius: 0 6px 6px 0; background: var(--mint); }
+.money-budget.is-near .money-budget-track span { background: var(--butter); }
+.money-budget.is-over .money-budget-track span { background: var(--coral); }
+.money-budget-text { margin: 0; color: var(--ink-2); font-size: 14px; }
+.money-budget-text strong { color: var(--ink); font-weight: inherit; }
+.money-over { display: inline-flex; align-items: center; gap: 6px; color: var(--coral-text); }
+.money-over .icon { width: 18px; height: 18px; }
+.money-budget-empty { margin: 12px 0 0; color: var(--ink-3); font-size: 14px; }
+.money-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; margin-top: 22px; }
+.money-grid > .block:only-child { grid-column: 1 / -1; }
+.money-bar { background: var(--accent-strong); }
+.trend-bars { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 4px 0 0; padding: 0; list-style: none; }
+.trend-col { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.trend-track { display: flex; align-items: flex-end; justify-content: center; width: 100%; height: 110px; border-bottom: 2px solid var(--line); }
+.trend-bar { display: block; width: min(28px, 70%); border-radius: 4px 4px 0 0; background: color-mix(in srgb, var(--accent-strong) 45%, var(--paper)); }
+.trend-col.is-current .trend-bar { background: var(--accent-strong); }
+.trend-col:hover .trend-bar { filter: brightness(1.06); }
+.trend-month { color: var(--ink-2); font-size: 13px; }
+.trend-col.is-current .trend-month { color: var(--ink); }
+.trend-val { max-width: 100%; overflow: hidden; color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.money-list { margin-top: 10px; }
+.money-day { margin-top: 22px; }
+.money-day-sum { margin-left: auto; color: var(--ink-3); font-size: 14px; font-weight: normal; font-variant-numeric: tabular-nums; }
+.money-rows { margin: 0; padding: 0; list-style: none; }
+.money-rows li + li { border-top: 2px dashed var(--line); }
+.money-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 6px; border: 0; border-radius: 14px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.money-row:hover { background: var(--wash); }
+.money-emoji { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--wash); font-size: 18px; }
+.money-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.money-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.money-cat { overflow: hidden; color: var(--ink-3); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.money-amt { flex: none; font-variant-numeric: tabular-nums; }
+.money-amt.is-in { color: var(--mint-text); }
+.money-input { display: flex; gap: 8px; }
+.money-input select { flex: none; width: auto; }
+.money-input input { flex: 1; min-width: 0; font-size: 20px; font-variant-numeric: tabular-nums; }
+.money-type { margin-bottom: 14px; }
+.cat-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-pick { position: relative; }
+.cat-pick input { position: absolute; opacity: 0; width: 1px; height: 1px; min-height: 0; }
+.cat-pick > span { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border: 2px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--ink-2); font-size: 14px; cursor: pointer; }
+.cat-pick input:checked + span { border-color: var(--accent-strong); background: var(--accent-soft); color: var(--ink); }
+.cat-pick input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 1px; }
+.cat-emoji { font-size: 16px; }
+.cat-list { display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
+.cat-row { display: flex; align-items: center; gap: 8px; }
+.cat-emoji-input { flex: none; width: 3.4em; text-align: center; }
+.cat-name-input { flex: 1; min-width: 0; }
+.cat-lock { flex: none; width: 5.5em; color: var(--ink-3); font-size: 12px; text-align: center; }
+
+@media (max-width: 760px) {
+  .money-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .shop-add, .money-add { grid-template-columns: minmax(0, 1fr) auto; }
+  .shop-add input[name="name"], .money-add input[name="text"] { grid-column: 1 / -1; }
+  .add-bar.money-add .btn { grid-column: auto; }
+  .money-stats { gap: 8px; }
+  .money-stat { padding: 10px 12px; border-radius: 18px; }
+  .money-stat-num { font-size: 18px; }
+  .money-month { min-width: 0; font-size: 18px; }
+  .shop-sum { flex-basis: 100%; text-align: left; }
+}

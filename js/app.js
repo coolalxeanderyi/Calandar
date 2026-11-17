@@ -19,19 +19,23 @@ import calendar from './views/calendar.js';
 import goals from './views/goals.js';
 import habits from './views/habits.js';
 import review from './views/review.js';
+import shopping from './views/shopping.js';
+import money from './views/money.js';
 import { startAutoUpdate } from './update.js';
 import { bridgeOn, onExternalChange, startExternal, clearExternal, findEvent } from './gsync.js';
 
 const MODE_KEY = 'planner.v1.mode';
 const README_URL = 'https://github.com/coolalxeanderyi/Calandar#readme';
 
-const VIEWS = { '': dashboard, tasks, calendar, goals, habits, review };
+const VIEWS = { '': dashboard, tasks, calendar, goals, habits, shopping, money, review };
 const NAV = [
   ['', '總覽', '🏠'],
   ['tasks', '任務', '✅'],
   ['calendar', '行事曆', '📅'],
   ['goals', '目標', '🎯'],
   ['habits', '習慣', '🌱'],
+  ['shopping', '購物', '🛒'],
+  ['money', '記帳', '💰'],
   ['review', '回顧', '📝'],
 ];
 const SYNC_TEXT = {
@@ -487,6 +491,10 @@ function renderView() {
     if (drafts.has(input.dataset.keep)) input.value = drafts.get(input.dataset.keep);
   }
   for (const input of el.querySelectorAll('[data-quick]')) if (input.value) updateQuickPreview(input);
+  // 購物清單、記帳的預覽：重畫之後，輸入到一半的字還在的話也把預覽補回來
+  for (const input of el.querySelectorAll('[data-preview][data-input]')) {
+    if (input.value) viewHandler('input', input.dataset.input)?.(input, null, ctx());
+  }
   focusPending();
   if (keep) {
     const again = el.querySelector(`[data-keep="${keep}"]`);
@@ -749,7 +757,8 @@ function wireEvents() {
       else location.hash = '#/tasks';
       return;
     }
-    openTaskModal(null, currentView.newTaskDefaults?.() || {});
+    if (currentView.onNew) currentView.onNew();
+    else openTaskModal(null, currentView.newTaskDefaults?.() || {});
   });
 
   // 拖曳任務到別的日期（行事曆）

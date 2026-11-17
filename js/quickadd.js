@@ -106,8 +106,8 @@ export function parseQuick(input, { today, weekStart = 1 } = {}) {
   }
 
   // 日期
-  const rel = { 大後天: 3, 後天: 2, 明天: 1, 明日: 1, 今天: 0, 今日: 0 };
-  take(/大後天|後天|明天|明日|今天|今日/, (w) => {
+  const rel = { 大後天: 3, 後天: 2, 明天: 1, 明日: 1, 今天: 0, 今日: 0, 昨天: -1, 昨日: -1, 前天: -2, 大前天: -3 };
+  take(/大後天|後天|明天|明日|今天|今日|大前天|前天|昨天|昨日/, (w) => {
     out.date = addDays(today, rel[w]);
   });
   if (!out.date) {

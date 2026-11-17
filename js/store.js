@@ -3,7 +3,7 @@
 import { uid, DELETE } from './utils.js';
 import { normalize, normalizeSettings, newDoc, toStored, isDone, DEFAULT_SETTINGS } from './model.js';
 
-export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal'];
+export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger'];
 
 const state = {
   status: 'idle', // idle | loading | ready
@@ -15,6 +15,8 @@ const state = {
   habits: [],
   reviews: [],
   journal: [], // 每天的心情和一句話（文件 ID 是日期）
+  shopping: [], // 購物清單
+  ledger: [], // 記帳簿
   settings: { ...DEFAULT_SETTINGS },
 };
 
@@ -78,6 +80,8 @@ export const store = {
       habits: [],
       reviews: [],
       journal: [],
+      shopping: [],
+      ledger: [],
       settings: { ...DEFAULT_SETTINGS },
     });
     const seen = new Set();
@@ -213,6 +217,23 @@ export const store = {
     return habit;
   },
 
+  // ---- 購物清單、記帳簿（以及其他簡單的資料） ----
+  addDoc(col, data) {
+    const id = uid();
+    run(() => backend.set(col, id, newDoc(col, data)));
+    return id;
+  },
+
+  updateDoc(col, id, patch) {
+    run(() => backend.patch(col, id, { ...patch, updatedAt: Date.now() }));
+  },
+
+  removeDoc(col, id) {
+    const doc = find(col, id);
+    run(() => backend.remove(col, id));
+    return doc;
+  },
+
   // 復原剛刪除的資料
   restore(col, doc) {
     if (!doc) return;
@@ -264,6 +285,8 @@ export const store = {
       habits: state.habits,
       reviews: state.reviews,
       journal: state.journal,
+      shopping: state.shopping,
+      ledger: state.ledger,
     };
   },
 
@@ -282,8 +305,8 @@ export const store = {
     }
     await backend.setMany(items);
     if (json.settings && typeof json.settings === 'object') {
-      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates } = normalizeSettings(json.settings);
-      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates }));
+      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats } = normalizeSettings(json.settings);
+      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats }));
     }
     return items.length;
   },
