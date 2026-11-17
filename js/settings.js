@@ -52,6 +52,7 @@ export function openSettings(env, { focus } = {}) {
         <div class="field"><span class="label">封面</span><button type="button" class="btn" data-cover>${icon('image')}換封面</button></div>
       </section>
       <section class="settings-sec" aria-labelledby="st-gcal" data-gcal-sec>${gcalSection(env)}</section>
+      <section class="settings-sec" aria-labelledby="st-iphone">${iphoneSection()}</section>
       <section class="settings-sec" aria-labelledby="st-backup">
         <h3 class="sub-title" id="st-backup">備份</h3>
         <p class="hint">備份檔是一個 JSON 檔，可以留一份副本，或把資料搬到另一個帳號。</p>
@@ -258,6 +259,32 @@ function themeCurrent(paletteId) {
   const t = getTheme(paletteId);
   return `<span class="theme-now"><span class="pill-emoji" aria-hidden="true">${t.emoji}</span>${esc(t.name)}</span>
     <button type="button" class="btn small" data-themes>換主題</button>`;
+}
+
+// ---------- 放到 iPhone 主畫面 ----------
+// 兩種方法都是同一件事：主畫面多一個計劃版的圖示，點開是全螢幕
+function iphoneSection() {
+  return `<h3 class="sub-title" id="st-iphone">放到 iPhone 主畫面</h3>
+    <p class="settings-text">放好之後主畫面會有計劃版的圖示，點開是全螢幕，沒網路也打得開，網站更新時也會自動更新。兩種方法選一種就好，都免費。</p>
+    <details class="gcal-help">
+      <summary>方法一：用 Safari 加入主畫面（最快）</summary>
+      <ol>
+        <li>用 iPhone 的 Safari 打開計劃版。</li>
+        <li>按下方的「分享」按鈕（方框加一個往上的箭頭）。</li>
+        <li>往下滑，選「加入主畫面」，再按「加入」。</li>
+      </ol>
+    </details>
+    <details class="gcal-help">
+      <summary>方法二：安裝描述檔</summary>
+      <ol>
+        <li>用 iPhone 的 Safari 打開這一頁，按這裡：<a class="btn small" href="iphone.mobileconfig">${icon('download')}下載描述檔</a></li>
+        <li>如果跳出「要允許下載描述檔嗎」，按「允許」，直接跳到第 4 步。如果是問要不要下載檔案，按「下載」。</li>
+        <li>打開「檔案」App，在「下載項目」裡點「iphone.mobileconfig」。</li>
+        <li>打開「設定」，點最上面的「已下載描述檔」，按右上角的「安裝」，輸入手機密碼，再按「安裝」。</li>
+      </ol>
+      <p class="hint">安裝時會顯示「未簽署」，那是因為沒有花錢買簽名，是正常的。這個描述檔只會加一個圖示，不會改手機的其他設定；不想要的話，長按圖示刪掉就好。</p>
+    </details>
+    <p class="hint">第一次從主畫面打開要再登入一次（主畫面的計劃版跟 Safari 是分開記住的），登進去還是同一個帳號、同一份資料。</p>`;
 }
 
 // ---------- 設定裡的 Google 日曆 ----------

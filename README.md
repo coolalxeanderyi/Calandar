@@ -139,6 +139,7 @@ python3 -m http.server 8000
 Calandar/
 ├── index.html            網站本身
 ├── 404.html              舊網址（例如 /v5/）或打錯的網址，自動回到首頁
+├── iphone.mobileconfig   iPhone 用的描述檔：在主畫面加入計劃版的圖示
 ├── latest.json           現在的版本編號（打開著的網站靠它知道有沒有更新）
 ├── sw.js                 讓網站離線也打得開（把網頁檔案存在瀏覽器裡）
 ├── manifest.webmanifest  加到手機主畫面用的設定
@@ -201,7 +202,8 @@ Google 給網站的日曆通行證大約一小時就會過期，而這個網站�
 打開著的網站會自己換成新版。如果是改成單一網址以前就開著的分頁（網址裡還有 `/v7/` 這種），重新整理一次就會回到首頁，之後就會自動更新了。
 
 **怎麼加到手機主畫面？**
-iPhone：用 Safari 打開網站，按下方的「分享」→「加入主畫面」。Android：用 Chrome 打開，按右上角選單 →「加到主畫面」或「安裝應用程式」。
+iPhone：用 Safari 打開網站，按下方的「分享」→「加入主畫面」。也可以安裝描述檔：在 iPhone 的 Safari 打開 <https://coolalxeanderyi.github.io/Calandar/iphone.mobileconfig> 下載，到「檔案」App 的「下載項目」點它，再到「設定」最上面的「已下載描述檔」按「安裝」（設定裡的「放到 iPhone 主畫面」有詳細步驟）。兩種方法結果一樣，都免費，不會過期。
+Android：用 Chrome 打開，按右上角選單 →「加到主畫面」或「安裝應用程式」。
 如果以前是從 `/v5/`、`/v7/` 這種網址加到主畫面的，請把舊的圖示刪掉，從 <https://coolalxeanderyi.github.io/Calandar/> 重新加一次。
 
 **重複的任務怎麼只改某一次？**
