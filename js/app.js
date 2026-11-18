@@ -14,7 +14,8 @@ import { initTimeline, deferRender } from './timeline.js';
 import { initSwipe, deferSwipeRender } from './swipe.js';
 import { onWeather, weatherFor } from './weather.js';
 import { deleteShopItem } from './views/shopping.js';
-import { openSettings, openCoverPicker, openThemePicker } from './settings.js';
+import { openSettings, openCoverPicker, openThemePicker, openZoneDialog } from './settings.js';
+import { zoneMismatch, zoneCity, deviceZone } from './zone.js';
 import { applyAppearance, cachedPalette, savedMode, getTheme, tintFor, onSystemThemeChange } from './themes.js';
 import { initGcal, gcalState, onGcalChange, connect as gcalConnect, run as gcalRun, hasToken as gcalHasToken, forgetToken as gcalForgetToken } from './gcal.js';
 import dashboard from './views/dashboard.js';
@@ -367,6 +368,7 @@ function renderShell() {
             <div class="head-tools">
               <button type="button" class="sync-pill" data-action="open-settings" data-sync></button>
               <button type="button" class="head-pill gcal-pill" data-action="gcal-pill" data-gcal hidden></button>
+              <button type="button" class="head-pill zone-pill" data-action="zone-pill" data-zone-pill hidden></button>
               <button type="button" class="head-pill theme-pill" data-action="open-themes" data-theme-pill></button>
               <button type="button" class="icon-btn" data-action="open-settings" aria-label="設定">${icon('settings')}</button>
             </div>
@@ -406,8 +408,39 @@ function renderGcalPill() {
   pill.setAttribute('aria-label', `Google 日曆：${label}。${pill.title}`);
 }
 
+// ---- 時區 ----
+// 第一次用新版時，把這台裝置的時區存進設定（之後每台裝置都用同一個）
+let zoneInit = false;
+function initZone() {
+  const s = store.state;
+  if (zoneInit || s.status !== 'ready' || s.settings.timeZone) return;
+  zoneInit = true;
+  store.saveSettings({ timeZone: deviceZone() });
+}
+
+// 這台裝置的時區跟設定的不一樣（例如回台灣了）：頁首出現「改成台北時間？」
+let zoneToasted = '';
+function renderZonePill() {
+  const pill = root.querySelector('[data-zone-pill]');
+  if (!pill) return;
+  const m = store.state.status === 'ready' ? zoneMismatch(store.state.settings) : null;
+  pill.hidden = !m;
+  if (!m) return;
+  const city = zoneCity(m.device);
+  pill.innerHTML = `<span class="pill-emoji" aria-hidden="true">🕒</span><span class="pill-text">改成${esc(city)}時間？</span>`;
+  pill.title = `這台裝置現在是${city}時間，跟計劃版設定的時區不一樣`;
+  pill.setAttribute('aria-label', `時區不一樣：這台裝置現在是${city}時間。點一下選擇要不要改`);
+  const key = `${m.device}>${m.planner}`;
+  if (zoneToasted !== key) {
+    zoneToasted = key;
+    toast(`這台裝置現在是${city}時間，跟計劃版設定的時區不一樣`, { actionLabel: '看看', onAction: () => openZoneDialog({ onDone: renderZonePill }) });
+  }
+}
+
 function renderHead() {
   if (editingTitle || !root.querySelector('.shell')) return;
+  initZone();
+  renderZonePill();
   const { settings: s, sync, mode, status } = store.state;
   const look = currentLook();
   const ready = status === 'ready';
@@ -687,6 +720,7 @@ const GLOBAL_ACTIONS = {
   'open-cover': () => openCoverPicker(env()),
   'open-themes': () => openThemePicker(env()),
   'gcal-pill': () => onGcalPill(),
+  'zone-pill': () => openZoneDialog({ onDone: renderZonePill }),
   'edit-title': (el) => editTitle(el),
 };
 
@@ -836,9 +870,14 @@ function wireEvents() {
     const { weatherOn, weatherPlace } = store.state.settings;
     if (weatherOn && weatherPlace && currentView === VIEWS['']) weatherFor(weatherPlace); // 太舊了才會真的去問
   };
-  setInterval(pokeWeather, 60_000);
+  setInterval(() => {
+    pokeWeather();
+    renderZonePill(); // 飛機落地、裝置換了時區
+  }, 60_000);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') pokeWeather();
+    if (document.visibilityState !== 'visible') return;
+    pokeWeather();
+    renderZonePill();
   });
   // 總覽泡泡裡的問候：時段變了（例如過了中午）就重畫，換上新的問候
   let greetPeriod = periodOf();

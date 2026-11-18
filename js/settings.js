@@ -16,6 +16,7 @@ import { backupNow, backupState, onBackupChange, BACKUP_VERSION } from './gsync.
 import { allTags, tagVar, colorName, ensureTags, renameTag, cycleTagColor, deleteTag, MAX_TAGS } from './tags.js';
 import { FONT_SIZES, fontScale, setFontScale } from './fontsize.js';
 import { searchPlaces, CREDIT_URL } from './weather.js';
+import { plannerZone, deviceZone, zoneChoices, zoneLabel, zoneCity, zoneMismatch, skipZone } from './zone.js';
 
 const ICONS = ['🌸', '📒', '🌈', '🍓', '🧋', '⭐', '🍀'];
 const MODES = [['auto', '跟著系統'], ['light', '淺色'], ['dark', '深色']];
@@ -315,6 +316,11 @@ export function openSettings(env, { focus } = {}) {
         }
         if (e.target.matches('[data-backup-on]')) {
           store.saveSettings({ backupOn: e.target.checked });
+          return;
+        }
+        if (e.target.matches('[data-zone-select]')) {
+          store.saveSettings({ timeZone: e.target.value });
+          toast(`行程的時區：${zoneLabel(e.target.value)}`);
           return;
         }
         if (e.target.matches('[data-gs-cal]')) {
@@ -760,6 +766,7 @@ function bridgeStatus() {
       ${s.gcalOn ? `<p class="settings-text gcal-status is-${cls}" data-gcal-status role="status">${esc(text)}</p>
       <p class="hint" data-gcal-last>${lastSyncText()}</p>` : ''}
     </div>
+    ${s.gcalOn ? zoneField() : ''}
     <div class="btn-row">
       ${s.gcalOn ? `<button type="button" class="btn" data-gcal-sync>${icon('repeat')}立即同步</button>` : ''}
       <a class="btn ghost" href="https://calendar.google.com/" target="_blank" rel="noopener">打開 Google 日曆</a>
@@ -779,12 +786,56 @@ function bridgeStatus() {
 }
 
 // 用 Google 登入連接（舊方式）中的狀態
+// 行程的時區：有時間的任務放進 Google 日曆時用哪個時區（每台裝置都一樣）
+function zoneField() {
+  const cur = plannerZone(store.state.settings);
+  const dev = deviceZone();
+  const opts = zoneChoices(cur)
+    .map((z) => `<option value="${esc(z)}"${z === cur ? ' selected' : ''}>${esc(zoneLabel(z))}${z === dev ? '　這台裝置' : ''}</option>`)
+    .join('');
+  return `<div class="field gs-zone"><label for="st-zone">行程的時區</label>
+      <select id="st-zone" data-zone-select>${opts}</select>
+      <p class="hint">有時間的任務放進 Google 日曆時用這個時區，每台裝置都一樣。搬到別的國家時改這裡就好：下午 3 點的任務會變成當地的下午 3 點。</p></div>`;
+}
+
+// 這台裝置的時區跟計劃版設定的不一樣：問要不要跟著換
+export function openZoneDialog({ onDone } = {}) {
+  const m = zoneMismatch(store.state.settings);
+  if (!m) return;
+  const dev = zoneCity(m.device);
+  const plan = zoneCity(m.planner);
+  openModal({
+    title: '時區不一樣',
+    size: 'sm',
+    body: `<p class="confirm-text">這台裝置現在是${esc(zoneLabel(m.device))}，計劃版放進 Google 日曆用的是${esc(zoneLabel(m.planner))}。</p>
+      <p class="settings-text">改成${esc(dev)}時間之後，有時間的任務會照${esc(dev)}時間放進 Google 日曆，例如下午 3 點的任務就是${esc(dev)}的下午 3 點。每台裝置都會跟著改。</p>
+      <p class="hint">如果只是出去玩幾天，行程還是照${esc(plan)}時間，就選「維持${esc(plan)}時間」，這台裝置不會再問。</p>`,
+    submitLabel: `改成${dev}時間`,
+    extra: [{
+      label: `維持${plan}時間`,
+      className: 'ghost',
+      onClick: () => {
+        skipZone(m.device, m.planner);
+        toast(`維持${plan}時間，這台裝置不會再問`);
+        onDone?.();
+      },
+    }],
+    onSubmit() {
+      store.saveSettings({ timeZone: m.device });
+      toast(`Google 日曆的時區改成${dev}時間了`);
+      onDone?.();
+      return true;
+    },
+  });
+}
+
 function legacyStatus(env) {
   const [cls, text] = statusInfo();
   return `
     <p class="settings-text gcal-status is-${cls}" data-gcal-status role="status">${esc(text)}</p>
     <p class="hint" data-gcal-last>${lastSyncText()}</p>
     <p class="hint">有時間的任務會照時長變成行程，開始前 10 分鐘提醒；沒有時間的是全天行程。在這裡修改，Google 日曆會跟著更新。</p>
+    ${zoneField()}
     <div class="btn-row">
       <button type="button" class="btn" data-gcal-sync>${icon('repeat')}立即同步</button>
       <a class="btn ghost" href="https://calendar.google.com/" target="_blank" rel="noopener">打開 Google 日曆</a>

@@ -81,6 +81,8 @@ export const DEFAULT_SETTINGS = {
   // 天氣：要不要顯示、地點（{ name, lat, lon }，null＝還沒設定）
   weatherOn: true,
   weatherPlace: null,
+  // 有時間的任務放進 Google 日曆時用的時區（例如 Asia/Taipei）；空的＝第一次打開時用那台裝置的
+  timeZone: '',
 };
 
 // 重要日子的種類：倒數（一次性）、生日、紀念日（每年）、正數（從那天開始算第幾天）
@@ -349,7 +351,19 @@ export function normalizeSettings(raw = {}) {
     userName: str(s.userName, 20).trim(),
     weatherOn: s.weatherOn !== false,
     weatherPlace: place(s.weatherPlace),
+    timeZone: zoneName(s.timeZone),
   };
+}
+
+// 時區名稱（例如 Asia/Taipei）：瀏覽器認得才收
+function zoneName(v) {
+  if (typeof v !== 'string' || !v || v.length > 64) return '';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: v });
+    return v;
+  } catch {
+    return '';
+  }
 }
 
 // 天氣的地點：名稱和經緯度（只留兩位小數就夠準了）

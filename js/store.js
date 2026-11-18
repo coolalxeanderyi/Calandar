@@ -308,8 +308,8 @@ export const store = {
     }
     await backend.setMany(items);
     if (json.settings && typeof json.settings === 'object') {
-      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName, weatherOn, weatherPlace } = normalizeSettings(json.settings);
-      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName, weatherOn, weatherPlace }));
+      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName, weatherOn, weatherPlace, timeZone } = normalizeSettings(json.settings);
+      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName, weatherOn, weatherPlace, ...(timeZone ? { timeZone } : {}) }));
     }
     return items.length;
   },

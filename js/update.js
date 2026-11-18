@@ -3,7 +3,7 @@
 // 更新網站時，這裡的 APP_BUILD 和 latest.json 的 build 要一起改成新的值。
 import { toast } from './ui.js';
 
-export const APP_BUILD = '2026-11-18-6';
+export const APP_BUILD = '2026-11-18-7';
 const TRIED_KEY = 'planner.updateTried';
 
 async function fetchLatestBuild() {

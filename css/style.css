@@ -307,6 +307,8 @@ button { font: inherit; color: inherit; }
 .head-pill .icon { width: 16px; height: 16px; }
 .pill-emoji { font-size: calc(17px * var(--fs)); line-height: 1; }
 .gcal-pill { position: relative; }
+.zone-pill { border-color: var(--butter); background: var(--butter-soft); color: var(--butter-text); }
+.zone-pill:hover { background: var(--butter-soft); color: var(--ink); }
 .gcal-pill::after { content: ""; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border: 2px solid var(--paper); border-radius: 50%; background: var(--mint); }
 .gcal-waiting::after, .gcal-syncing::after { background: var(--butter); animation: blink 1s ease-in-out infinite alternate; }
 .gcal-need-auth { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); box-shadow: 0 3px 0 var(--accent); }
@@ -952,7 +954,7 @@ button.hb-name:hover { background: var(--wash); }
   .head-tools { position: absolute; top: 8px; right: var(--gutter); gap: 6px; }
   .head-pill { justify-content: center; min-width: 34px; min-height: 34px; padding: 0 8px; }
   .head-pill .pill-text { display: none; }
-  .head-pill.gcal-need-auth .pill-text, .head-pill.gcal-error .pill-text { display: inline; font-size: calc(12.5px * var(--fs)); }
+  .head-pill.gcal-need-auth .pill-text, .head-pill.gcal-error .pill-text, .head-pill.zone-pill .pill-text { display: inline; font-size: calc(12.5px * var(--fs)); }
   .title-row { margin-top: 12px; }
 
   .tabs {

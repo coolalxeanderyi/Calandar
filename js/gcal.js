@@ -11,6 +11,7 @@ import { store } from './store.js';
 import { isDone, isRepeating, repeatDaysOf, remindMinutes } from './model.js';
 import { addDays, toKey } from './utils.js';
 import { emojiOf } from './dates.js';
+import { plannerZone } from './zone.js';
 import { bridgeOn, bridgeCall, SETUP_ERRORS, clearExternal } from './gsync.js';
 
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
@@ -57,7 +58,8 @@ export function initGcal(authApi) {
   evaluate();
 }
 
-const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+// 用計劃版設定的時區，不是這台裝置的：時區不同的兩台裝置才不會把行程改來改去
+const timeZone = () => plannerZone(store.state.settings);
 const pad = (n) => String(n).padStart(2, '0');
 
 // ---- 通行證（存在這個分頁，關掉分頁就沒了） ----
@@ -116,7 +118,7 @@ function describe(t, tagsById) {
 }
 
 export function desiredEvents(s = store.state) {
-  const zone = timeZone();
+  const zone = plannerZone(s.settings);
   const events = [];
   const tagsById = new Map((s.settings.tags || []).map((g) => [g.id, g]));
   for (const t of s.tasks) {
