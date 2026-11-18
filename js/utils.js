@@ -131,6 +131,14 @@ export function greeting(date = new Date()) {
   return '晚上好';
 }
 
+// 標題下面的問候：早上 5 點到中午是早安，中午到傍晚 6 點是午安，其他時間是晚安
+export function hello(date = new Date()) {
+  const h = date.getHours();
+  if (h >= 5 && h < 12) return { word: '早安', emoji: '☀️' };
+  if (h >= 12 && h < 18) return { word: '午安', emoji: '🌤️' };
+  return { word: '晚安', emoji: '🌙' };
+}
+
 export function debounce(fn, wait = 200) {
   let t;
   return (...args) => {

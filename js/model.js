@@ -76,6 +76,8 @@ export const DEFAULT_SETTINGS = {
   ledgerCats: [],
   // 購物清單的類別（跟記帳的類別分開；空的＝用預設類別）
   shopCats: [],
+  // 標題下面的問候用的名字（空的＝「用戶」）
+  userName: '',
 };
 
 // ---- 記帳簿 ----
@@ -318,6 +320,7 @@ export function normalizeSettings(raw = {}) {
     budget: money(s.budget) ?? 0,
     ledgerCats: catList(s.ledgerCats),
     shopCats: catList(s.shopCats, { typed: false }),
+    userName: str(s.userName, 20).trim(),
   };
 }
 

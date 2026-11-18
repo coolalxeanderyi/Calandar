@@ -49,6 +49,8 @@ export function openSettings(env, { focus } = {}) {
           </div>
           <div class="field grow"><label for="st-title">標題</label><input id="st-title" name="title" value="${esc(s.title)}" maxlength="60" autocomplete="off"></div>
         </div>
+        <div class="field"><label for="st-name">你的名字</label><input id="st-name" name="userName" value="${esc(s.userName)}" maxlength="20" autocomplete="off" placeholder="用戶" aria-describedby="st-name-hint">
+          <p class="hint" id="st-name-hint">標題下面會跟你打招呼，例如「早安，${esc(s.userName || '用戶')}」。不填就是「用戶」。</p></div>
         <div class="field"><span class="label">配色主題</span><div class="btn-row" data-theme-current>${themeCurrent(s.palette)}</div></div>
         <fieldset class="field"><legend>深淺模式</legend>${segRadio('theme', MODES, s.theme, '深淺模式')}</fieldset>
         <fieldset class="field"><legend>一週從哪天開始</legend>${segRadio('weekStart', [['1', '星期一'], ['0', '星期日']], s.weekStart, '一週從哪天開始')}</fieldset>
@@ -358,6 +360,7 @@ export function openSettings(env, { focus } = {}) {
       const f = form.elements;
       store.saveSettings({
         title: f.title.value.trim() || '計劃版',
+        userName: f.userName.value.trim().slice(0, 20),
         icon: f.icon.value.trim(), // 空白＝吉祥物
         theme: f.theme.value,
         weekStart: Number(f.weekStart.value),
@@ -442,10 +445,10 @@ function backupBox() {
 }
 
 // ---------- 放到 iPhone 主畫面 ----------
-// 兩種方法都是同一件事：主畫面多一個計劃版的圖示，點開是全螢幕
+// 兩種方法都是同一件事：主畫面多一個「外接大腦」的圖示，點開是全螢幕
 function iphoneSection() {
   return `<h3 class="sub-title" id="st-iphone">放到 iPhone 主畫面</h3>
-    <p class="settings-text">放好之後主畫面會有計劃版的圖示，點開是全螢幕，沒網路也打得開，網站更新時也會自動更新。兩種方法選一種就好，都免費。</p>
+    <p class="settings-text">放好之後主畫面會有「外接大腦」的圖示，點開是全螢幕，沒網路也打得開，網站更新時也會自動更新。兩種方法選一種就好，都免費。</p>
     <details class="gcal-help">
       <summary>方法一：用 Safari 加入主畫面（最快）</summary>
       <ol>
@@ -464,7 +467,7 @@ function iphoneSection() {
       </ol>
       <p class="hint">安裝時會顯示「未簽署」，那是因為沒有花錢買簽名，是正常的。這個描述檔只會加一個圖示，不會改手機的其他設定；不想要的話，長按圖示刪掉就好。</p>
     </details>
-    <p class="hint">第一次從主畫面打開要再登入一次（主畫面的計劃版跟 Safari 是分開記住的），登進去還是同一個帳號、同一份資料。</p>`;
+    <p class="hint">第一次從主畫面打開要再登入一次（主畫面的「外接大腦」跟 Safari 是分開記住的），登進去還是同一個帳號、同一份資料。</p>`;
 }
 
 // ---------- 設定裡的 Google 日曆 ----------

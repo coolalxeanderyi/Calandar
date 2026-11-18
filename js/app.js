@@ -1,6 +1,6 @@
 // 網站進入點：決定要顯示登入畫面還是主畫面、處理換頁與所有點擊
 import { store } from './store.js';
-import { esc, todayKey, fmtMonthDay } from './utils.js';
+import { esc, todayKey, fmtMonthDay, hello } from './utils.js';
 import { icon, toast, confirmDialog, celebrateAt } from './ui.js';
 import { coverSVG } from './covers.js';
 import { createLocalBackend, hasLocalData, localItems, readLocalData } from './backend-local.js';
@@ -281,7 +281,7 @@ function renderGate(kind, message = '') {
   currentView = null;
   currentHash = null;
   headSig = '';
-  document.title = '計劃版';
+  document.title = '外接大腦';
   let text = '';
   let actions = '';
   let note = '';
@@ -359,7 +359,10 @@ function renderShell() {
         <div class="page-head-inner">
           <div class="page-icon" data-page-icon aria-hidden="true"></div>
           <div class="title-row">
-            <h1 class="page-title" data-page-title></h1>
+            <div class="title-wrap">
+              <h1 class="page-title" data-page-title></h1>
+              <p class="title-greet" data-greet></p>
+            </div>
             <div class="head-tools">
               <button type="button" class="sync-pill" data-action="open-settings" data-sync></button>
               <button type="button" class="head-pill gcal-pill" data-action="gcal-pill" data-gcal hidden></button>
@@ -409,6 +412,7 @@ function renderHead() {
   const ready = status === 'ready';
   const sig = JSON.stringify([s.title, s.icon, look.coverStyle, s.coverSeed, look.palette, sync, mode, ready]);
   renderGcalPill();
+  updateGreeting();
   if (sig === headSig) return;
   headSig = sig;
   const tint = tintFor(look.coverStyle, look.palette);
@@ -426,13 +430,26 @@ function renderHead() {
   iconEl.classList.toggle('is-mascot', usesMascot(s.icon));
   iconEl.innerHTML = usesMascot(s.icon) ? mascot('smile', { size: 92 }) : esc(s.icon);
   root.querySelector('[data-page-title]').innerHTML = `<button type="button" class="title-btn" data-action="edit-title" title="點一下修改標題">${esc(s.title)}</button>`;
+  updateGreeting();
   const [label, detail] = SYNC_TEXT[sync] || SYNC_TEXT.synced;
   const pill = root.querySelector('[data-sync]');
   pill.className = `sync-pill sync-${sync}`;
   pill.innerHTML = `<i aria-hidden="true"></i>${label}`;
   pill.title = detail;
   pill.setAttribute('aria-label', `${label}：${detail}。開啟設定`);
-  document.title = s.title;
+  document.title = '外接大腦';
+}
+
+// 標題下面的問候：「早安，名字」。名字在設定裡改，沒填就是「用戶」
+function updateGreeting() {
+  const el = document.querySelector('[data-greet]');
+  if (!el) return;
+  const { word, emoji } = hello();
+  const name = store.state.settings.userName || '用戶';
+  const text = `${word}，${name}`;
+  if (el.dataset.text === text) return;
+  el.dataset.text = text;
+  el.innerHTML = `<span class="greet-emoji" aria-hidden="true">${emoji}</span>${esc(text)}`;
 }
 
 function parseRoute() {
@@ -802,6 +819,11 @@ function wireEvents() {
   document.addEventListener('dragend', endDrag);
 
   initTimeline({ rerender: renderView });
+  // 時間到了就換問候（例如過了中午變午安）
+  setInterval(updateGreeting, 60_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') updateGreeting();
+  });
 
   window.addEventListener('hashchange', onRoute);
   onSystemThemeChange(refreshLook);

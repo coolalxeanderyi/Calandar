@@ -5,7 +5,7 @@
 	<key>ConsentText</key>
 	<dict>
 		<key>default</key>
-		<string>這個描述檔只會在主畫面加入「計劃版」的圖示，不會改手機的其他設定。之後不想要的話，可以到「設定 → 一般 → VPN 與裝置管理」移除，或直接長按主畫面上的圖示刪除。</string>
+		<string>這個描述檔只會在主畫面加入「外接大腦」的圖示，不會改手機的其他設定。之後不想要的話，可以到「設定 → 一般 → VPN 與裝置管理」移除，或直接長按主畫面上的圖示刪除。</string>
 	</dict>
 	<key>PayloadContent</key>
 	<array>
@@ -714,11 +714,11 @@
 			<key>IsRemovable</key>
 			<true/>
 			<key>Label</key>
-			<string>計劃版</string>
+			<string>外接大腦</string>
 			<key>PayloadDescription</key>
-			<string>在主畫面加入「計劃版」的圖示。</string>
+			<string>在主畫面加入「外接大腦」的圖示。</string>
 			<key>PayloadDisplayName</key>
-			<string>計劃版</string>
+			<string>外接大腦</string>
 			<key>PayloadIdentifier</key>
 			<string>io.github.coolalxeanderyi.calandar.webclip</string>
 			<key>PayloadType</key>
@@ -734,13 +734,13 @@
 		</dict>
 	</array>
 	<key>PayloadDescription</key>
-	<string>在主畫面加入「計劃版」的圖示，點開就是全螢幕的計劃版。只會加一個圖示，不會改手機的其他設定。</string>
+	<string>在主畫面加入「外接大腦」的圖示，點開就是全螢幕的計劃版。只會加一個圖示，不會改手機的其他設定。</string>
 	<key>PayloadDisplayName</key>
-	<string>計劃版</string>
+	<string>外接大腦</string>
 	<key>PayloadIdentifier</key>
 	<string>io.github.coolalxeanderyi.calandar</string>
 	<key>PayloadOrganization</key>
-	<string>計劃版</string>
+	<string>外接大腦</string>
 	<key>PayloadRemovalDisallowed</key>
 	<false/>
 	<key>PayloadType</key>
