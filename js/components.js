@@ -66,7 +66,9 @@ export function taskRow(task, { goalsById = new Map(), tagsById = tagMap(), toda
   const check = task.ended
     ? `<span class="check is-ended" aria-hidden="true">${icon('check')}</span>`
     : `<button type="button" class="check" role="checkbox" aria-checked="${done}" data-action="toggle-task" data-id="${esc(task.id)}"${occAttr(task)} aria-label="${done ? '標記為未完成' : '完成'}：${esc(task.title)}${task.occ ? `（${fmtMonthDay(task.occ)}）` : ''}">${icon('check')}</button>`;
-  return `<li class="task prio-${task.priority}${done ? ' is-done' : ''}" data-id="${esc(task.id)}"${rowAttrs ? rowAttrs(task) : ''}>
+  // 手機滑動手勢：往右滑完成、往左滑刪除（重複的任務不能用滑的刪，免得整串不見）
+  const swipe = ` data-swipe="task"${isRepeating(task) || task.occ ? ' data-swipe-left="0"' : ''}${task.ended ? ' data-swipe-right="0"' : ''}`;
+  return `<li class="task prio-${task.priority}${done ? ' is-done' : ''}" data-id="${esc(task.id)}"${swipe}${rowAttrs ? rowAttrs(task) : ''}>
     ${check}
     <button type="button" class="task-main" data-action="open-task" data-id="${esc(task.id)}"${occAttr(task)}>
       <span class="task-title">${esc(task.title)}</span>

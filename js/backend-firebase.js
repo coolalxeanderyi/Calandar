@@ -3,7 +3,7 @@
 // Firestore 會在瀏覽器裡保留一份快取，所以離線時也能用，連線後自動同步。
 import { DELETE, isPlainObject } from './utils.js';
 
-const COLS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger'];
+const COLS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger', 'dates'];
 
 export async function createFirebase(config, { emulators = false } = {}) {
   const fb = await import('./firebase-sdk.js');

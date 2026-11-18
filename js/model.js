@@ -76,9 +76,20 @@ export const DEFAULT_SETTINGS = {
   ledgerCats: [],
   // 購物清單的類別（跟記帳的類別分開；空的＝用預設類別）
   shopCats: [],
-  // 標題下面的問候用的名字（空的＝「用戶」）
+  // 小日曆問候用的名字（空的＝「用戶」）
   userName: '',
+  // 天氣：要不要顯示、地點（{ name, lat, lon }，null＝還沒設定）
+  weatherOn: true,
+  weatherPlace: null,
 };
+
+// 重要日子的種類：倒數（一次性）、生日、紀念日（每年）、正數（從那天開始算第幾天）
+export const DATE_KINDS = [
+  ['countdown', '倒數', '✈️'],
+  ['birthday', '生日', '🎂'],
+  ['anniversary', '紀念日', '💝'],
+  ['since', '正數', '🌱'],
+];
 
 // ---- 記帳簿 ----
 // [代碼, 符號, 名稱, 小數位數]
@@ -105,6 +116,7 @@ const DEFAULTS = {
   journal: () => ({ date: '', mood: 0, text: '', createdAt: 0, updatedAt: 0 }),
   shopping: () => ({ name: '', qty: '', store: '', cat: '', price: null, note: '', done: false, doneAt: null, createdAt: 0, updatedAt: 0 }),
   ledger: () => ({ type: 'out', amount: 0, currency: '', cat: '', title: '', date: '', note: '', createdAt: 0, updatedAt: 0 }),
+  dates: () => ({ title: '', date: '', kind: 'countdown', emoji: '', showAge: true, remind: true, note: '', createdAt: 0, updatedAt: 0 }),
   reviews: () => ({ week: '', wins: '', improve: '', focus: ['', '', ''], createdAt: 0, updatedAt: 0 }),
   goals: () => ({ title: '', why: '', area: '', emoji: '🎯', deadline: '', status: 'active', progressMode: 'tasks', progress: 0, doneAt: null, createdAt: 0, updatedAt: 0 }),
   habits: () => ({ name: '', emoji: '✅', days: [...ALL_DAYS], log: {}, archived: false, order: 0, createdAt: 0, updatedAt: 0 }),
@@ -228,6 +240,20 @@ export function normalize(col, raw = {}) {
       updatedAt: num(d.updatedAt),
     };
   }
+  if (col === 'dates') {
+    return {
+      id: raw.id,
+      title: str(d.title, 60),
+      date: date(d.date),
+      kind: oneOf(d.kind, DATE_KINDS.map((k) => k[0]), 'countdown'),
+      emoji: str(d.emoji, 16),
+      showAge: d.showAge !== false,
+      remind: d.remind !== false,
+      note: str(d.note, 200),
+      createdAt: num(d.createdAt),
+      updatedAt: num(d.updatedAt),
+    };
+  }
   if (col === 'ledger') {
     return {
       id: raw.id,
@@ -321,7 +347,18 @@ export function normalizeSettings(raw = {}) {
     ledgerCats: catList(s.ledgerCats),
     shopCats: catList(s.shopCats, { typed: false }),
     userName: str(s.userName, 20).trim(),
+    weatherOn: s.weatherOn !== false,
+    weatherPlace: place(s.weatherPlace),
   };
+}
+
+// 天氣的地點：名稱和經緯度（只留兩位小數就夠準了）
+function place(v) {
+  if (!v || typeof v !== 'object') return null;
+  const lat = Number(v.lat);
+  const lon = Number(v.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { name: str(v.name, 40).trim() || '目前位置', lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100 };
 }
 
 // 類別：記帳 [{ id, type: 'out'|'in', name, emoji }]、購物清單 [{ id, name, emoji }]

@@ -41,8 +41,16 @@ function itemMeta(item, cur, cats) {
   return meta.length ? `<span class="task-tags">${meta.join('')}</span>` : '';
 }
 
+// 刪除一項（可以復原）：視窗裡的「刪除」和往左滑都用這個
+export function deleteShopItem(id) {
+  const item = store.state.shopping.find((i) => i.id === id);
+  if (!item) return;
+  const doc = store.removeDoc('shopping', id);
+  toast(`已刪除「${item.name}」`, { actionLabel: '復原', onAction: () => store.restore('shopping', doc) });
+}
+
 function itemRow(item, cur, cats) {
-  return `<li class="task shop-item${item.done ? ' is-done' : ''}" data-id="${esc(item.id)}">
+  return `<li class="task shop-item${item.done ? ' is-done' : ''}" data-id="${esc(item.id)}" data-swipe="shop">
     <button type="button" class="check" role="checkbox" aria-checked="${item.done}" data-action="shop-toggle" data-id="${esc(item.id)}" aria-label="${item.done ? '還沒買' : '買到了'}：${esc(item.name)}">${icon('check')}</button>
     <button type="button" class="task-main" data-action="shop-edit" data-id="${esc(item.id)}">
       <span class="task-title">${esc(item.name)}</span>
@@ -338,10 +346,7 @@ export function openItemModal(item, defaults = {}, { onSaved } = {}) {
       label: '刪除',
       icon: 'trash',
       className: 'ghost danger-text',
-      onClick: () => {
-        const doc = store.removeDoc('shopping', item.id);
-        toast(`已刪除「${item.name}」`, { actionLabel: '復原', onAction: () => store.restore('shopping', doc) });
-      },
+      onClick: () => deleteShopItem(item.id),
     }],
     onOpen(form) {
       bindCatAdder(form, (name, emoji) => {

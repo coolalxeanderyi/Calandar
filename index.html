@@ -46,6 +46,16 @@
         }
       } catch (e) {}
     })();
+    // 這台裝置選的字體大小（設定 → 外觀 → 字體大小；數值要跟 js/fontsize.js 一樣）
+    (function () {
+      try {
+        var f = localStorage.getItem('planner.v1.fontScale');
+        if (f === '1.12' || f === '1.25' || f === '1.4') {
+          document.documentElement.style.setProperty('--fs', f);
+          document.documentElement.dataset.font = f;
+        }
+      } catch (e) {}
+    })();
   </script>
   <script type="module" src="js/app.js"></script>
 </head>

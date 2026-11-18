@@ -1,6 +1,9 @@
 // 總覽：今天要做的事、本週任務、今天的習慣、進行中的目標、小月曆
 import { esc, todayKey, fmtMonthDay, fmtWeekday, weekKeys, addDays } from '../utils.js';
 import { greetFor } from '../greet.js';
+import { datesStrip, specialLines, openDateModal, openDatesManager } from '../datesui.js';
+import { weatherFor, weatherLine, CREDIT_URL } from '../weather.js';
+import { openWeatherPlace } from '../settings.js';
 import { icon, toast } from '../ui.js';
 import { store } from '../store.js';
 import {
@@ -31,7 +34,8 @@ export default {
     const left = overdue.length + todays.filter((t) => !isDone(t)).length;
     const allDone = todays.length > 0 && left === 0;
     const hour = new Date().getHours();
-    const mood = allDone ? 'happy' : hour >= 23 || hour < 5 ? 'sleepy' : 'smile';
+    const special = (state.dates || []).length > 0 && specialLines(state, today).length > 0;
+    const mood = allDone || special ? 'happy' : hour >= 23 || hour < 5 ? 'sleepy' : 'smile';
     const summary = left
       ? `今天有 ${left} 件事要做${events.length ? `、${events.length} 個行程` : ''}，一件一件來就好。`
       : allDone ? '今天的任務都完成了，辛苦了！'
@@ -54,6 +58,14 @@ export default {
 
     const note = state.journal.find((j) => j.id === today) || { mood: 0, text: '' };
     const hi = greetFor(state.settings.userName);
+    const specials = specialLines(state, today);
+    const { weatherOn, weatherPlace } = state.settings;
+    const wx = weatherOn && weatherPlace ? weatherLine(weatherFor(weatherPlace), weatherPlace) : null;
+    const weather = wx
+      ? `<p class="dash-weather"><span class="greet-emoji" aria-hidden="true">${wx.emoji}</span><span class="wx-text">${esc(wx.text)} <a class="wx-credit" href="${CREDIT_URL}" target="_blank" rel="noopener" title="天氣資料來自 Open-Meteo.com">Open-Meteo</a></span></p>`
+      : weatherOn && !weatherPlace
+        ? `<p class="dash-weather is-setup"><button type="button" class="link-btn" data-action="weather-setup"><span aria-hidden="true">🌤️</span>加上今天的天氣</button></p>`
+        : '';
 
     const miniMonth = ui.miniMonth || today.slice(0, 7);
     const counts = new Map();
@@ -67,10 +79,13 @@ export default {
         <div class="dash-mascot" aria-hidden="true">${mascot(mood, { size: 88 })}</div>
         <div class="dash-bubble">
           <h2 class="dash-date"><span class="dash-day">${fmtMonthDay(today)}</span><span class="dash-weekday">${fmtWeekday(today)}</span></h2>
+          ${specials.map((x) => `<p class="dash-special"><span class="greet-emoji" aria-hidden="true">${esc(x.emoji)}</span>${esc(x.text)}</p>`).join('')}
           <p class="dash-greet"><span class="greet-emoji" aria-hidden="true">${hi.emoji}</span>${esc(hi.text)}</p>
+          ${weather}
           <p class="dash-summary">${summary}</p>
         </div>
       </header>
+      ${datesStrip(state, today)}
       <div class="dash-grid">
         <div class="dash-main">
           <section class="block" aria-labelledby="b-today">
@@ -168,6 +183,19 @@ export default {
   },
 
   actions: {
+    'new-date'() {
+      openDateModal();
+    },
+    'open-date'(el) {
+      const doc = store.state.dates.find((x) => x.id === el.dataset.id);
+      if (doc) openDateModal(doc);
+    },
+    'all-dates'() {
+      openDatesManager();
+    },
+    'weather-setup'() {
+      openWeatherPlace();
+    },
     'set-mood'(el) {
       const today = todayKey();
       const cur = store.state.journal.find((j) => j.id === today);

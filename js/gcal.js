@@ -10,6 +10,7 @@
 import { store } from './store.js';
 import { isDone, isRepeating, repeatDaysOf, remindMinutes } from './model.js';
 import { addDays, toKey } from './utils.js';
+import { emojiOf } from './dates.js';
 import { bridgeOn, bridgeCall, SETUP_ERRORS, clearExternal } from './gsync.js';
 
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
@@ -157,8 +158,30 @@ export function desiredEvents(s = store.state) {
       extendedProperties: { private: { planner: '1' } },
     });
   }
+  // 重要日子：倒數的日子放一次；生日、紀念日每年重複。前一週和前一天早上 9 點提醒
+  for (const d of s.dates || []) {
+    if (!d.date || !d.remind || d.kind === 'since') continue;
+    const yearly = d.kind === 'birthday' || d.kind === 'anniversary';
+    const title = d.kind === 'birthday' && !d.title.includes('生日') ? `${d.title}生日` : d.title;
+    const ev = {
+      id: eventId('d', d.id),
+      summary: `${emojiOf(d)} ${title}`,
+      description: d.note || '',
+      transparency: 'transparent',
+      start: { date: d.date },
+      end: { date: addDays(d.date, 1) },
+      reminders: { useDefault: false, overrides: DATE_REMINDERS },
+      extendedProperties: { private: { planner: '1' } },
+    };
+    // 2/29 的生日：平年放在 2/28（二月的最後一天）
+    if (yearly) ev.recurrence = [d.date.slice(5) === '02-29' ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'RRULE:FREQ=YEARLY'];
+    events.push(ev);
+  }
   return events;
 }
+
+// 整天的事件：提醒的分鐘數從那天 0 點往前算。前一天 9:00＝15 小時前、前一週 9:00＝6 天又 15 小時前
+const DATE_REMINDERS = [{ method: 'popup', minutes: 15 * 60 }, { method: 'popup', minutes: (6 * 24 + 15) * 60 }];
 
 function fingerprint(events) {
   const text = JSON.stringify(
@@ -265,9 +288,11 @@ async function listEvents(calId) {
 }
 
 const when = (t) => (t?.date ? `d:${t.date}` : t?.dateTime ? `t:${t.dateTime.slice(0, 16)}` : '');
+// 提醒比對時不管先後順序（Google 回傳的順序可能跟放進去的不一樣）
+const remKey = (list) => JSON.stringify((list || []).map((r) => `${r.method}:${r.minutes}`).sort());
 function differs(want, have) {
-  const wantRem = JSON.stringify(want.reminders.overrides);
-  const haveRem = JSON.stringify(have.reminders?.useDefault ? null : have.reminders?.overrides || []);
+  const wantRem = remKey(want.reminders.overrides);
+  const haveRem = have.reminders?.useDefault ? 'default' : remKey(have.reminders?.overrides);
   return (
     want.summary !== (have.summary || '') ||
     (want.description || '') !== (have.description || '') ||

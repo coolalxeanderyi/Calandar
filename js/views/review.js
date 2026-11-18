@@ -5,6 +5,7 @@ import { store } from '../store.js';
 import { isDone, expandTasks, activeHabits, isScheduled, isChecked, habitStart, MOODS } from '../model.js';
 import { taskList, emptyState, goalsMap } from '../components.js';
 import { tagMap, tagVar } from '../tags.js';
+import { moodMonthData, moodChart, monthOfWeek, wireMoodChart, rememberMoodData } from '../moodchart.js';
 
 const ui = { week: '' };
 
@@ -131,6 +132,12 @@ export default {
     const nextFirst = addDays(first, 7);
     const title = `${fmtMonthDay(first)} – ${fmtMonthDay(last)}`;
 
+    // 這個月的心情起伏（跨月的那週，算在天數比較多的那個月）
+    const month = monthOfWeek(first);
+    const moodData = moodMonthData(state, { month, weekStart, today });
+    rememberMoodData(moodData);
+    wireMoodChart();
+
     const stat = (num, label, tone = '') => `<div class="review-stat${tone ? ` is-${tone}` : ''}"><span class="review-num">${num}</span><span class="review-label">${label}</span></div>`;
 
     return `
@@ -169,6 +176,10 @@ export default {
         <section class="block review-journal" aria-labelledby="rv-journal">
           <header class="block-head"><h3 id="rv-journal" class="tape tape-1"><span aria-hidden="true">📝</span>每天的心情</h3></header>
           <div class="block-body">${journalSection(keys, today, state.journal)}</div>
+        </section>
+        <section class="block review-moods" aria-labelledby="rv-moods">
+          <header class="block-head"><h3 id="rv-moods" class="tape tape-3"><span aria-hidden="true">📈</span>${Number(month.slice(5))}月的心情起伏</h3></header>
+          <div class="block-body">${moodChart(moodData, { selFirst: first, today })}</div>
         </section>
         <section class="block review-habits" aria-labelledby="rv-habits">
           <header class="block-head"><h3 id="rv-habits" class="tape tape-2"><span aria-hidden="true">🌱</span>習慣</h3></header>

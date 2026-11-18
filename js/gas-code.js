@@ -332,9 +332,13 @@ function when_(t) {
   return '';
 }
 
+function remKey_(list) {
+  return JSON.stringify((list || []).map(function (r) { return r.method + ':' + r.minutes; }).sort());
+}
+
 function differs_(want, have) {
-  var wantRem = JSON.stringify((want.reminders && want.reminders.overrides) || []);
-  var haveRem = JSON.stringify(have.reminders && have.reminders.useDefault ? null : (have.reminders && have.reminders.overrides) || []);
+  var wantRem = remKey_(want.reminders && want.reminders.overrides);
+  var haveRem = have.reminders && have.reminders.useDefault ? 'default' : remKey_(have.reminders && have.reminders.overrides);
   return (want.summary || '') !== (have.summary || '')
     || (want.description || '') !== (have.description || '')
     || (want.colorId || '') !== (have.colorId || '')

@@ -8,9 +8,12 @@ import { createLocalBackend, hasLocalData, localItems, readLocalData } from './b
 import { createFirebase } from './backend-firebase.js';
 import { toStored, normalizeSettings, usesMascot, isDone, isScheduled, listTasks } from './model.js';
 import { mascot } from './mascot.js';
-import { openTaskModal, openGoalModal, openHabitModal, openEventModal, updateQuickPreview } from './components.js';
+import { openTaskModal, openGoalModal, openHabitModal, openEventModal, updateQuickPreview, deleteTaskWithUndo } from './components.js';
 import { moveTo } from './views/tasks.js';
 import { initTimeline, deferRender } from './timeline.js';
+import { initSwipe, deferSwipeRender } from './swipe.js';
+import { onWeather, weatherFor } from './weather.js';
+import { deleteShopItem } from './views/shopping.js';
 import { openSettings, openCoverPicker, openThemePicker } from './settings.js';
 import { applyAppearance, cachedPalette, savedMode, getTheme, tintFor, onSystemThemeChange } from './themes.js';
 import { initGcal, gcalState, onGcalChange, connect as gcalConnect, run as gcalRun, hasToken as gcalHasToken, forgetToken as gcalForgetToken } from './gcal.js';
@@ -458,6 +461,7 @@ function renderView() {
   const el = document.getElementById('view');
   if (!el) return;
   if (deferRender()) return; // 正在拖曳時間軸上的任務：放開之後再畫
+  if (deferSwipeRender()) return; // 手指正在滑某一列：放開之後再畫
   const { name, params } = parseRoute();
   const view = VIEWS[name];
   if (location.hash !== currentHash || view !== currentView) {
@@ -804,6 +808,38 @@ function wireEvents() {
   document.addEventListener('dragend', endDrag);
 
   initTimeline({ rerender: renderView });
+  // 手機滑動手勢：往右滑完成（點那一列的勾勾）、往左滑刪除（可以復原）
+  initSwipe({
+    rerender: renderView,
+    onSwipe({ row, id, occ, kind, dir }) {
+      if (dir === 'right') {
+        let btn = row.isConnected ? row.querySelector('.check[data-action]') : null;
+        if (!btn) {
+          const sel = `[data-swipe] .check[data-action][data-id="${CSS.escape(id)}"]${occ ? `[data-occ="${CSS.escape(occ)}"]` : ''}`;
+          btn = document.querySelector(`#view ${sel}`);
+        }
+        btn?.click();
+        return;
+      }
+      if (kind === 'shop') deleteShopItem(id);
+      else deleteTaskWithUndo(id);
+    },
+    onBlocked(row, dir) {
+      if (dir === 'left' && row.dataset.swipe === 'task') toast('重複的任務要點開來刪除，免得整串都不見');
+    },
+  });
+  // 天氣更新好了：在總覽的話重畫，換上新的天氣
+  onWeather(() => {
+    if (root.querySelector('.shell') && store.state.status === 'ready' && currentView === VIEWS['']) renderView();
+  });
+  const pokeWeather = () => {
+    const { weatherOn, weatherPlace } = store.state.settings;
+    if (weatherOn && weatherPlace && currentView === VIEWS['']) weatherFor(weatherPlace); // 太舊了才會真的去問
+  };
+  setInterval(pokeWeather, 60_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') pokeWeather();
+  });
   // 總覽泡泡裡的問候：時段變了（例如過了中午）就重畫，換上新的問候
   let greetPeriod = periodOf();
   const checkPeriod = () => {

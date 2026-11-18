@@ -1,4 +1,4 @@
-// 設定：外觀（標題、圖示、配色主題、深淺模式、每週開始日、封面）、Google 日曆、備份、帳號
+// 設定：外觀（標題、圖示、配色主題、深淺模式、字體大小、每週開始日、封面）、天氣、Google 日曆、備份、帳號
 import { esc, downloadFile, todayKey } from './utils.js';
 import { icon, openModal, confirmDialog, toast } from './ui.js';
 import { store } from './store.js';
@@ -14,6 +14,8 @@ import {
 import { scriptCode, SCRIPT_VERSION } from './gas-code.js';
 import { backupNow, backupState, onBackupChange, BACKUP_VERSION } from './gsync.js';
 import { allTags, tagVar, colorName, ensureTags, renameTag, cycleTagColor, deleteTag, MAX_TAGS } from './tags.js';
+import { FONT_SIZES, fontScale, setFontScale } from './fontsize.js';
+import { searchPlaces, CREDIT_URL } from './weather.js';
 
 const ICONS = ['🌸', '📒', '🌈', '🍓', '🧋', '⭐', '🍀'];
 const MODES = [['auto', '跟著系統'], ['light', '淺色'], ['dark', '深色']];
@@ -53,8 +55,16 @@ export function openSettings(env, { focus } = {}) {
           <p class="hint" id="st-name-hint">總覽的小日曆會跟你打招呼，例如「早安，${esc(s.userName || '用戶')}！」。不填就是「用戶」。</p></div>
         <div class="field"><span class="label">配色主題</span><div class="btn-row" data-theme-current>${themeCurrent(s.palette)}</div></div>
         <fieldset class="field"><legend>深淺模式</legend>${segRadio('theme', MODES, s.theme, '深淺模式')}</fieldset>
+        <fieldset class="field"><legend>字體大小</legend>${segRadio('fontScale', FONT_SIZES, fontScale(), '字體大小')}
+          <p class="hint">選了馬上生效，而且只改這台裝置：例如 iPad 調大，手機還是原本的大小。</p></fieldset>
         <fieldset class="field"><legend>一週從哪天開始</legend>${segRadio('weekStart', [['1', '星期一'], ['0', '星期日']], s.weekStart, '一週從哪天開始')}</fieldset>
         <div class="field"><span class="label">封面</span><button type="button" class="btn" data-cover>${icon('image')}換封面</button></div>
+      </section>
+      <section class="settings-sec" aria-labelledby="st-weather">
+        <h3 class="sub-title" id="st-weather">天氣</h3>
+        <label class="gs-toggle"><input type="checkbox" name="weatherOn"${s.weatherOn ? ' checked' : ''}><span>在總覽的小日曆泡泡裡顯示天氣，例如「現在 8°C，今天會下雨，記得帶傘」</span></label>
+        <div class="field"><span class="label">地點</span><div class="btn-row" data-weather-place>${weatherPlaceBox()}</div></div>
+        <p class="hint">天氣資料來自 <a href="${CREDIT_URL}" target="_blank" rel="noopener">Open-Meteo</a>，免費，不用申請帳號。</p>
       </section>
       <section class="settings-sec" aria-labelledby="st-tags" data-tags-sec>${tagsSection()}</section>
       <section class="settings-sec" aria-labelledby="st-tpl" data-tpl-sec>${templatesSection()}</section>
@@ -98,7 +108,7 @@ export function openSettings(env, { focus } = {}) {
         if (last) last.textContent = lastSyncText();
       };
       // 標籤、範本、雲端硬碟備份：內容變了才重畫那一段
-      const parts = [['[data-tags-sec]', tagsSection], ['[data-tpl-sec]', templatesSection], ['[data-backup-box]', backupBox]];
+      const parts = [['[data-tags-sec]', tagsSection], ['[data-tpl-sec]', templatesSection], ['[data-backup-box]', backupBox], ['[data-weather-place]', weatherPlaceBox]];
       const partHTML = new Map(parts.map(([sel, fn]) => [sel, fn()]));
       const refreshParts = () => {
         for (const [sel, fn] of parts) {
@@ -134,7 +144,19 @@ export function openSettings(env, { focus } = {}) {
         sec.querySelector('button')?.focus({ preventScroll: true });
       }
 
+      // 字體大小：選了馬上套用（只存在這台裝置）
+      form.addEventListener('change', (e) => {
+        if (e.target.name !== 'fontScale') return;
+        setFontScale(e.target.value);
+        toast(`字體大小：${FONT_SIZES.find(([v]) => v === e.target.value)?.[1] || '標準'}（只改這台裝置）`);
+      });
+
       form.addEventListener('click', async (e) => {
+        if (e.target.closest('[data-weather-pick]')) {
+          e.preventDefault();
+          openWeatherPlace();
+          return;
+        }
         const pick = e.target.closest('.emoji-pick');
         if (pick) {
           e.preventDefault();
@@ -364,11 +386,95 @@ export function openSettings(env, { focus } = {}) {
         icon: f.icon.value.trim(), // 空白＝吉祥物
         theme: f.theme.value,
         weekStart: Number(f.weekStart.value),
+        weatherOn: f.weatherOn.checked,
       });
       toast('已儲存設定');
       return true;
     },
   });
+}
+
+function weatherPlaceBox() {
+  const p = store.state.settings.weatherPlace;
+  return `<span class="theme-now">${p ? `<span class="pill-emoji" aria-hidden="true">📍</span>${esc(p.name)}` : '還沒設定'}</span>
+    <button type="button" class="btn small" data-weather-pick>${p ? '換地點' : '設定地點'}</button>`;
+}
+
+// ---------- 天氣的地點：搜尋城市，或用現在的位置 ----------
+export function openWeatherPlace() {
+  const cur = store.state.settings.weatherPlace;
+  let found = [];
+  const save = (place, close) => {
+    const weatherPlace = { name: place.name, lat: place.lat, lon: place.lon };
+    store.saveSettings({ weatherPlace, weatherOn: true });
+    toast(`天氣的地點：${place.name}`);
+    close();
+  };
+  const show = (form, html) => {
+    form.querySelector('[data-wp-results]').innerHTML = html;
+  };
+  openModal({
+    title: '天氣的地點',
+    submitLabel: '搜尋',
+    body: `
+      <div class="field"><label for="wp-q">城市</label>
+        <input id="wp-q" name="q" maxlength="60" autocomplete="off" autofocus enterkeyhint="search" placeholder="例如：台北、倫敦、Manchester"></div>
+      <div class="wp-results" data-wp-results aria-live="polite"></div>
+      <div class="btn-row"><button type="button" class="btn small ghost" data-wp-here><span aria-hidden="true">📍</span>用我現在的位置</button>
+        ${cur ? `<span class="hint">現在是：${esc(cur.name)}</span>` : ''}</div>
+      <p class="hint">用現在的位置時，只會記下大概的位置（一公里左右），不會一直追蹤。</p>`,
+    onOpen(form, close) {
+      form.addEventListener('click', (e) => {
+        const pick = e.target.closest('[data-wp-pick]');
+        if (pick) {
+          e.preventDefault();
+          const place = found[Number(pick.dataset.wpPick)];
+          if (place) save(place, close);
+          return;
+        }
+        if (!e.target.closest('[data-wp-here]')) return;
+        e.preventDefault();
+        if (!navigator.geolocation) {
+          show(form, '<p class="hint is-error">這個瀏覽器拿不到位置，請改用搜尋城市。</p>');
+          return;
+        }
+        show(form, '<p class="hint">正在找你的位置…</p>');
+        navigator.geolocation.getCurrentPosition(
+          (pos) => save({ name: '目前位置', lat: pos.coords.latitude, lon: pos.coords.longitude }, close),
+          (err) => show(form, `<p class="hint is-error">${err.code === 1
+            ? '沒有拿到位置的權限。可以在瀏覽器的網站設定裡允許，或直接搜尋城市。'
+            : '找不到你的位置，請改用搜尋城市。'}</p>`),
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 60 * 60 * 1000 },
+        );
+      });
+    },
+    // 按「搜尋」或 Enter：找城市（視窗不關）
+    onSubmit(form) {
+      search(form);
+      return false;
+    },
+  });
+
+  async function search(form) {
+    const q = form.elements.q.value.trim();
+    if (q.length < 2) {
+      show(form, '<p class="hint is-error">請至少打兩個字，例如：台北</p>');
+      form.elements.q.focus();
+      return;
+    }
+    show(form, '<p class="hint">搜尋中…</p>');
+    try {
+      found = await searchPlaces(q);
+    } catch {
+      found = [];
+      show(form, '<p class="hint is-error">現在連不到天氣服務，請檢查網路後再試一次。</p>');
+      return;
+    }
+    show(form, found.length
+      ? `<ul class="wp-list">${found.map((x, i) => `<li><button type="button" class="wp-pick" data-wp-pick="${i}"><span class="wp-name">${esc(x.found || x.name)}</span>${x.area ? `<span class="wp-area">${esc(x.area)}</span>` : ''}</button></li>`).join('')}</ul>`
+      : `<p class="hint is-error">找不到「${esc(q)}」，換個寫法試試，例如英文名稱。</p>`);
+    form.querySelector('[data-wp-pick]')?.focus();
+  }
 }
 
 function themeCurrent(paletteId) {

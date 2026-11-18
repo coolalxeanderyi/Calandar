@@ -3,7 +3,7 @@
 import { uid, DELETE } from './utils.js';
 import { normalize, normalizeSettings, newDoc, toStored, isDone, DEFAULT_SETTINGS } from './model.js';
 
-export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger'];
+export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger', 'dates'];
 
 const state = {
   status: 'idle', // idle | loading | ready
@@ -17,6 +17,7 @@ const state = {
   journal: [], // 每天的心情和一句話（文件 ID 是日期）
   shopping: [], // 購物清單
   ledger: [], // 記帳簿
+  dates: [], // 重要日子（倒數日、生日、紀念日）
   settings: { ...DEFAULT_SETTINGS },
 };
 
@@ -82,6 +83,7 @@ export const store = {
       journal: [],
       shopping: [],
       ledger: [],
+      dates: [],
       settings: { ...DEFAULT_SETTINGS },
     });
     const seen = new Set();
@@ -287,6 +289,7 @@ export const store = {
       journal: state.journal,
       shopping: state.shopping,
       ledger: state.ledger,
+      dates: state.dates,
     };
   },
 
@@ -305,8 +308,8 @@ export const store = {
     }
     await backend.setMany(items);
     if (json.settings && typeof json.settings === 'object') {
-      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName } = normalizeSettings(json.settings);
-      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName }));
+      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName, weatherOn, weatherPlace } = normalizeSettings(json.settings);
+      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats, userName, weatherOn, weatherPlace }));
     }
     return items.length;
   },
