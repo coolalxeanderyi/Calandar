@@ -1358,7 +1358,10 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 .group-head .group-title { margin: 0; padding-bottom: 0; border-bottom: 0; }
 
 /* ---------- 購物清單 ---------- */
-.shop-add { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto auto; }
+.shop-add { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.7fr) auto auto; }
+.shop-add select { min-width: 0; }
+.shop-tools { margin: 0; gap: 4px; }
+.tag.tag-store, .tag.tag-cat { background: var(--wash); }
 .money-add { grid-template-columns: minmax(0, 1fr) auto auto; }
 .money-sym { flex: none; align-self: center; color: var(--ink-2); font-size: 20px; }
 .shop-toolbar { justify-content: space-between; }
@@ -1436,7 +1439,7 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 }
 @media (max-width: 640px) {
   .shop-add, .money-add { grid-template-columns: minmax(0, 1fr) auto; }
-  .shop-add input[name="name"], .shop-add input[name="note"], .money-add input[name="text"] { grid-column: 1 / -1; }
+  .shop-add input[name="name"], .shop-add input[name="note"], .shop-add select, .money-add input[name="text"] { grid-column: 1 / -1; }
   .add-bar.money-add .btn, .add-bar.shop-add .btn { grid-column: auto; }
   .money-stats { gap: 8px; }
   .money-stat { padding: 10px 12px; border-radius: 18px; }
@@ -1444,3 +1447,13 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
   .money-month { min-width: 0; font-size: 18px; }
   .shop-sum { flex-basis: 100%; text-align: left; }
 }
+
+/* 在選類別的地方直接新增類別 */
+.cat-adder { display: inline-flex; align-items: center; }
+.cat-add-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border: 2px dashed var(--line); border-radius: 999px; background: transparent; color: var(--ink-2); font: inherit; font-size: 14px; cursor: pointer; }
+.cat-add-btn:hover { border-color: var(--accent-strong); color: var(--ink); }
+.cat-add-btn .icon { width: 14px; height: 14px; }
+.cat-add-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cat-add-form[hidden] { display: none; }
+.cat-add-emoji { width: 3.2em; padding-inline: 6px; text-align: center; }
+.cat-add-name { width: 9em; }

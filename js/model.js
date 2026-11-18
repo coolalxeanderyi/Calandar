@@ -70,10 +70,12 @@ export const DEFAULT_SETTINGS = {
   backupOn: true,
   backupDay: '',
   backupUrl: '',
-  // 記帳簿：預設貨幣（空的＝依時區猜）、每月支出預算（0＝沒有）、自訂分類（空的＝用預設分類）
+  // 記帳簿：貨幣（一律新台幣）、每月支出預算（0＝沒有）、自訂類別（空的＝用預設類別）
   currency: '',
   budget: 0,
   ledgerCats: [],
+  // 購物清單的類別（跟記帳的類別分開；空的＝用預設類別）
+  shopCats: [],
 };
 
 // ---- 記帳簿 ----
@@ -99,7 +101,7 @@ const DEFAULTS = {
     repeat: 'none', repeatDays: [], repeatUntil: '', doneOn: {}, checklist: [], tags: [], remind: null, doneAt: null, createdAt: 0, updatedAt: 0,
   }),
   journal: () => ({ date: '', mood: 0, text: '', createdAt: 0, updatedAt: 0 }),
-  shopping: () => ({ name: '', qty: '', store: '', price: null, note: '', done: false, doneAt: null, createdAt: 0, updatedAt: 0 }),
+  shopping: () => ({ name: '', qty: '', store: '', cat: '', price: null, note: '', done: false, doneAt: null, createdAt: 0, updatedAt: 0 }),
   ledger: () => ({ type: 'out', amount: 0, currency: '', cat: '', title: '', date: '', note: '', createdAt: 0, updatedAt: 0 }),
   reviews: () => ({ week: '', wins: '', improve: '', focus: ['', '', ''], createdAt: 0, updatedAt: 0 }),
   goals: () => ({ title: '', why: '', area: '', emoji: '🎯', deadline: '', status: 'active', progressMode: 'tasks', progress: 0, doneAt: null, createdAt: 0, updatedAt: 0 }),
@@ -215,6 +217,7 @@ export function normalize(col, raw = {}) {
       name: str(d.name, 120),
       qty: str(d.qty, 20),
       store: str(d.store, 30),
+      cat: typeof d.cat === 'string' && ID_RE.test(d.cat) ? d.cat : '',
       price: money(d.price),
       note: str(d.note, 300),
       done: !!d.done,
@@ -314,11 +317,12 @@ export function normalizeSettings(raw = {}) {
     currency: oneOf(s.currency, CURRENCY_IDS, ''),
     budget: money(s.budget) ?? 0,
     ledgerCats: catList(s.ledgerCats),
+    shopCats: catList(s.shopCats, { typed: false }),
   };
 }
 
-// 記帳的分類 [{ id, type: 'out'|'in', name, emoji }]
-function catList(v) {
+// 類別：記帳 [{ id, type: 'out'|'in', name, emoji }]、購物清單 [{ id, name, emoji }]
+function catList(v, { typed = true } = {}) {
   if (!Array.isArray(v)) return [];
   const seen = new Set();
   const out = [];
@@ -327,6 +331,10 @@ function catList(v) {
     const name = str(c.name, 12).trim();
     if (!name) continue;
     seen.add(c.id);
+    if (!typed) {
+      out.push({ id: c.id, name, emoji: str(c.emoji, 16).trim() || '🏷️' });
+      continue;
+    }
     const type = c.type === 'in' ? 'in' : 'out';
     out.push({ id: c.id, type, name, emoji: str(c.emoji, 16).trim() || (type === 'in' ? '💰' : '📦') });
   }

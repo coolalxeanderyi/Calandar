@@ -305,8 +305,8 @@ export const store = {
     }
     await backend.setMany(items);
     if (json.settings && typeof json.settings === 'object') {
-      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats } = normalizeSettings(json.settings);
-      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats }));
+      const { title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats } = normalizeSettings(json.settings);
+      run(() => backend.setSettings({ title, icon, coverStyle, coverSeed, theme, palette, weekStart, tags, templates, currency, budget, ledgerCats, shopCats }));
     }
     return items.length;
   },

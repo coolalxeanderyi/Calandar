@@ -189,6 +189,58 @@ function bindEmojiPicks(form) {
   });
 }
 
+// ---------- 在選類別的地方直接新增類別（購物清單、記帳簿都用） ----------
+export function catAdder(label = '新增類別') {
+  return `<span class="cat-adder" data-cat-adder>
+    <button type="button" class="cat-add-btn" data-cat-add-open>${icon('plus')}${esc(label)}</button>
+    <span class="cat-add-form" hidden>
+      <input class="cat-add-emoji" data-cat-add-emoji maxlength="4" placeholder="🏷️" autocomplete="off" aria-label="新類別的圖示（可不填）">
+      <input class="cat-add-name" data-cat-add-name maxlength="12" placeholder="類別名稱" autocomplete="off" aria-label="新類別的名稱">
+      <button type="button" class="btn small" data-cat-add-save>加入</button>
+    </span>
+  </span>`;
+}
+
+// onAdd(name, emoji, adder)：回傳 true 表示加好了（輸入框會清空、收起來）
+export function bindCatAdder(form, onAdd) {
+  const save = (box) => {
+    const nameInput = box.querySelector('[data-cat-add-name]');
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameInput.focus();
+      return;
+    }
+    const emoji = box.querySelector('[data-cat-add-emoji]').value.trim();
+    if (onAdd(name, emoji, box) === false) return;
+    nameInput.value = '';
+    box.querySelector('[data-cat-add-emoji]').value = '';
+    box.querySelector('.cat-add-form').hidden = true;
+    const open = box.querySelector('[data-cat-add-open]');
+    open.hidden = false;
+  };
+  form.addEventListener('click', (e) => {
+    const open = e.target.closest('[data-cat-add-open]');
+    if (open) {
+      e.preventDefault();
+      const box = open.closest('[data-cat-adder]');
+      open.hidden = true;
+      box.querySelector('.cat-add-form').hidden = false;
+      box.querySelector('[data-cat-add-name]').focus();
+      return;
+    }
+    const btn = e.target.closest('[data-cat-add-save]');
+    if (btn) {
+      e.preventDefault();
+      save(btn.closest('[data-cat-adder]'));
+    }
+  });
+  form.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing || !e.target.matches('[data-cat-add-name], [data-cat-add-emoji]')) return;
+    e.preventDefault(); // 不要送出整個表單
+    save(e.target.closest('[data-cat-adder]'));
+  });
+}
+
 // ---------- 快速新增（看得懂「明天下午3點 家教 #工作」） ----------
 export function quickAddField({ keep, placeholder, label }) {
   return `<input name="title" data-keep="${keep}" data-quick placeholder="${esc(placeholder)}" autocomplete="off" aria-label="${esc(label)}" aria-describedby="${keep}-preview" maxlength="300">`;

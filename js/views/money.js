@@ -2,7 +2,7 @@
 import { esc, todayKey, WEEKDAYS, weekdayOf, fmtMonthDay, uid } from '../utils.js';
 import { icon, toast, openModal, fieldError } from '../ui.js';
 import { store } from '../store.js';
-import { emptyState } from '../components.js';
+import { emptyState, catAdder, bindCatAdder } from '../components.js';
 import { MONEY_MAX } from '../model.js';
 import {
   catsOf, catOf, currencyOf, curInfo, fmtMoney, parseMoney, summarize, addMonths, daysInMonth, readAmount, roundMoney,
@@ -52,12 +52,12 @@ function entryRow(e, cats, cur) {
   </button></li>`;
 }
 
-// 支出分類：一個顏色的橫條（長度＝金額），旁邊寫名稱、金額和百分比
+// 支出類別：一個顏色的橫條（長度＝金額），旁邊寫名稱、金額和百分比
 function catBars(sum, cats, cur) {
   const rows = [...sum.byCat.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   if (!rows.length) return '<p class="hint">這個月還沒有支出。</p>';
   const max = rows[0][1];
-  return `<ul class="time-bars money-bars" aria-label="這個月的支出分類">${rows.map(([id, v]) => {
+  return `<ul class="time-bars money-bars" aria-label="這個月的支出類別">${rows.map(([id, v]) => {
     const cat = cats.find((c) => c.id === id) || cats.find((c) => c.id === 'other');
     const pct = sum.out ? Math.round((v / sum.out) * 100) : 0;
     return `<li class="time-row" title="${esc(`${cat.name}：${fmtMoney(v, cur)}，佔支出 ${pct}%`)}">
@@ -147,7 +147,7 @@ export default {
           <button type="button" class="icon-btn" data-action="money-month" data-step="1" aria-label="下個月">${icon('right')}</button>
           ${isNow ? '' : '<button type="button" class="btn small ghost" data-action="money-month" data-step="0">回到這個月</button>'}
         </div>
-        <button type="button" class="btn small ghost" data-action="money-settings">${icon('settings')}預算、分類</button>
+        <button type="button" class="btn small ghost" data-action="money-settings">${icon('settings')}預算、類別</button>
       </div>
 
       <div class="money-stats">
@@ -259,10 +259,24 @@ function catPicks(cats, type, selected) {
   return cats.filter((c) => c.type === type).map((c) => `<label class="cat-pick"><input type="radio" name="cat" value="${esc(c.id)}"${c.id === selected ? ' checked' : ''}><span><span class="cat-emoji" aria-hidden="true">${esc(c.emoji)}</span>${esc(c.name)}</span></label>`).join('');
 }
 
+// 在記一筆的視窗裡直接新增記帳的類別（只加到記帳簿，跟購物清單的類別分開）
+function addLedgerCat(type, name, emoji) {
+  const settings = store.state.settings;
+  const cats = catsOf(settings);
+  const same = cats.find((c) => c.type === type && c.name === name);
+  if (same) return same;
+  const cat = { id: `c${uid().slice(0, 10)}`, type, name: name.slice(0, 12), emoji: emoji || (type === 'in' ? '💰' : '🏷️') };
+  // 新類別放在同一種（支出或收入）的「其他」前面
+  const at = cats.findIndex((c) => c.id === fallbackCat(type));
+  const next = at < 0 ? [...cats, cat] : [...cats.slice(0, at), cat, ...cats.slice(at)];
+  store.saveSettings({ ledgerCats: next });
+  return cat;
+}
+
 // defaults：{ title, amount, type, cat, date, currency, guess（用來猜分類的字）, fallback（猜不到時的分類） }
 export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
   const settings = store.state.settings;
-  const cats = catsOf(settings);
+  let cats = catsOf(settings);
   const base = entry || {
     type: defaults.type === 'in' ? 'in' : 'out',
     amount: defaults.amount ?? '',
@@ -287,8 +301,8 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
         <span class="money-sym" aria-hidden="true">${esc(curInfo(cur).symbol)}</span>
         <input id="mm-amount" name="amount" value="${base.amount === '' ? '' : esc(String(base.amount))}" inputmode="decimal" autocomplete="off" autofocus placeholder="0">
       </div></div>
-    <fieldset class="field"><legend>分類</legend>
-      <div class="cat-picks" data-cat-picks>${catPicks(cats, base.type, selected)}</div></fieldset>
+    <fieldset class="field"><legend>類別</legend>
+      <div class="cat-picks" data-cat-picks>${catPicks(cats, base.type, selected)}${catAdder()}</div></fieldset>
     <div class="field-row">
       <div class="field grow"><label for="mm-title">說明</label>
         <input id="mm-title" name="title" value="${esc(base.title)}" maxlength="100" autocomplete="off" placeholder="例如：午餐（可不填）"></div>
@@ -314,12 +328,24 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
     submitLabel: entry ? '儲存' : '記下來',
     extra,
     onOpen(form) {
-      // 換成收入／支出時，分類跟著換
+      const typeNow = () => (form.querySelector('input[name="type"]:checked')?.value === 'in' ? 'in' : 'out');
+      const showPicks = (type, selectedId) => {
+        const picks = form.querySelector('[data-cat-picks]');
+        picks.querySelectorAll('.cat-pick').forEach((el) => el.remove());
+        picks.insertAdjacentHTML('afterbegin', catPicks(cats, type, selectedId));
+      };
+      // 換成收入／支出時，類別跟著換
       form.addEventListener('change', (e) => {
         if (e.target.name !== 'type') return;
-        const type = e.target.value;
-        const picks = form.querySelector('[data-cat-picks]');
-        picks.innerHTML = catPicks(cats, type, fallbackCat(type));
+        showPicks(e.target.value, fallbackCat(e.target.value));
+      });
+      bindCatAdder(form, (name, emoji) => {
+        const type = typeNow();
+        const cat = addLedgerCat(type, name, emoji);
+        cats = catsOf(store.state.settings).some((c) => c.id === cat.id) ? catsOf(store.state.settings) : [...cats.filter((c) => c.id !== cat.id), cat];
+        showPicks(type, cat.id);
+        form.querySelector(`input[name="cat"][value="${CSS.escape(cat.id)}"]`)?.focus();
+        return true;
       });
     },
     onSubmit(form) {
@@ -361,13 +387,13 @@ export function openMoneyModal(entry = null, defaults = {}, { onSaved } = {}) {
   });
 }
 
-// ---------- 貨幣、預算、分類 ----------
+// ---------- 預算、類別（只影響記帳簿，不會動到購物清單的類別） ----------
 function catRow(c, isDefault) {
   const locked = c.id === fallbackCat(c.type);
   return `<li class="cat-row" data-cat-row data-id="${esc(c.id)}" data-type="${c.type}">
     <input class="cat-emoji-input" name="emoji" value="${esc(c.emoji)}" maxlength="4" autocomplete="off" aria-label="「${esc(c.name)}」的圖示">
-    <input class="cat-name-input" name="catname" value="${esc(c.name)}" maxlength="12" autocomplete="off" aria-label="分類名稱：${esc(c.name)}">
-    ${locked ? '<span class="cat-lock">一定要有</span>' : `<button type="button" class="icon-btn small" data-cat-del aria-label="刪除分類「${esc(c.name)}」">${icon('trash')}</button>`}
+    <input class="cat-name-input" name="catname" value="${esc(c.name)}" maxlength="12" autocomplete="off" aria-label="類別名稱：${esc(c.name)}">
+    ${locked ? '<span class="cat-lock">一定要有</span>' : `<button type="button" class="icon-btn small" data-cat-del aria-label="刪除類別「${esc(c.name)}」">${icon('trash')}</button>`}
   </li>`;
 }
 
@@ -376,16 +402,17 @@ export function openMoneySettings() {
   const cats = catsOf(settings);
   const isDefault = !settings.ledgerCats.length;
   const list = (type) => `<ul class="cat-list" data-cat-list="${type}">${cats.filter((c) => c.type === type).map((c) => catRow(c, isDefault)).join('')}</ul>
-    <button type="button" class="btn small ghost" data-cat-add="${type}">${icon('plus')}新增${type === 'in' ? '收入' : '支出'}分類</button>`;
+    <button type="button" class="btn small ghost" data-cat-add="${type}">${icon('plus')}新增${type === 'in' ? '收入' : '支出'}類別</button>`;
   const body = `
     <div class="field"><label for="ms-budget">每月支出預算（新台幣，不填＝不設）</label>
       <input id="ms-budget" name="budget" value="${settings.budget || ''}" inputmode="decimal" autocomplete="off" placeholder="例如 15000"></div>
-    <fieldset class="field"><legend>支出分類</legend>${list('out')}</fieldset>
-    <fieldset class="field"><legend>收入分類</legend>${list('in')}</fieldset>
-    ${isDefault ? '' : '<button type="button" class="link-btn" data-cat-reset>恢復預設分類</button>'}`;
+    <p class="hint">這是記帳簿的類別，跟購物清單的類別分開。刪掉的類別裡的紀錄會算到「其他」。</p>
+    <fieldset class="field"><legend>支出類別</legend>${list('out')}</fieldset>
+    <fieldset class="field"><legend>收入類別</legend>${list('in')}</fieldset>
+    ${isDefault ? '' : '<button type="button" class="link-btn" data-cat-reset>恢復預設類別</button>'}`;
 
   openModal({
-    title: '預算、分類',
+    title: '預算、類別',
     body,
     size: 'lg',
     onOpen(form) {
@@ -440,11 +467,11 @@ export function openMoneySettings() {
             toast('「其他」的名稱不能空白', { tone: 'error' });
             return false;
           }
-          continue; // 沒寫名稱的新分類就不加
+          continue; // 沒寫名稱的新類別就不加
         }
         if (names.has(`${type}:${name}`)) {
           nameInput.focus();
-          toast(`有兩個分類都叫「${name}」`, { tone: 'error' });
+          toast(`有兩個類別都叫「${name}」`, { tone: 'error' });
           return false;
         }
         names.add(`${type}:${name}`);
