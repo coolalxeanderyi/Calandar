@@ -1,5 +1,6 @@
 // 總覽：今天要做的事、本週任務、今天的習慣、進行中的目標、小月曆
 import { esc, todayKey, fmtMonthDay, fmtWeekday, weekKeys, addDays } from '../utils.js';
+import { greetFor } from '../greet.js';
 import { icon, toast } from '../ui.js';
 import { store } from '../store.js';
 import {
@@ -52,6 +53,7 @@ export default {
       .slice(0, 4);
 
     const note = state.journal.find((j) => j.id === today) || { mood: 0, text: '' };
+    const hi = greetFor(state.settings.userName);
 
     const miniMonth = ui.miniMonth || today.slice(0, 7);
     const counts = new Map();
@@ -65,6 +67,7 @@ export default {
         <div class="dash-mascot" aria-hidden="true">${mascot(mood, { size: 88 })}</div>
         <div class="dash-bubble">
           <h2 class="dash-date"><span class="dash-day">${fmtMonthDay(today)}</span><span class="dash-weekday">${fmtWeekday(today)}</span></h2>
+          <p class="dash-greet"><span class="greet-emoji" aria-hidden="true">${hi.emoji}</span>${esc(hi.text)}</p>
           <p class="dash-summary">${summary}</p>
         </div>
       </header>

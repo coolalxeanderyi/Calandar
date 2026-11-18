@@ -260,8 +260,7 @@ button { font: inherit; color: inherit; }
 }
 .page-icon.is-mascot .mascot { margin-top: 4px; }
 .title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
-.title-wrap { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.title-greet { display: flex; align-items: center; gap: 6px; margin: 0 0 0 2px; color: var(--ink-2); font-size: 17px; }
+.dash-greet { display: flex; align-items: center; gap: 6px; margin: 2px 0 2px; color: var(--ink); font-size: 17px; }
 .greet-emoji { font-size: 18px; line-height: 1; }
 .page-title { min-width: 0; margin: 0; font-size: clamp(30px, 4.4vw, 44px); line-height: 1.25; letter-spacing: 0.05em; }
 .title-btn { padding: 0 8px; margin: 0 -8px; border: 0; border-radius: 14px; background: none; font: inherit; letter-spacing: inherit; text-align: left; cursor: text; }
@@ -943,7 +942,7 @@ button.hb-name:hover { background: var(--wash); }
   .page-icon .mascot { width: 68px; height: 68px; }
   .title-row { margin-top: 8px; }
   .page-title { font-size: 28px; }
-  .title-greet { font-size: 15px; }
+  .dash-greet { font-size: 15.5px; }
   .sync-pill { padding: 3px 10px; font-size: 12.5px; }
   .head-tools .icon-btn { width: 34px; height: 34px; }
   .page-head-inner { position: relative; display: flow-root; }

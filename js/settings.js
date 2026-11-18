@@ -50,7 +50,7 @@ export function openSettings(env, { focus } = {}) {
           <div class="field grow"><label for="st-title">標題</label><input id="st-title" name="title" value="${esc(s.title)}" maxlength="60" autocomplete="off"></div>
         </div>
         <div class="field"><label for="st-name">你的名字</label><input id="st-name" name="userName" value="${esc(s.userName)}" maxlength="20" autocomplete="off" placeholder="用戶" aria-describedby="st-name-hint">
-          <p class="hint" id="st-name-hint">標題下面會跟你打招呼，例如「早安，${esc(s.userName || '用戶')}」。不填就是「用戶」。</p></div>
+          <p class="hint" id="st-name-hint">總覽的小日曆會跟你打招呼，例如「早安，${esc(s.userName || '用戶')}！」。不填就是「用戶」。</p></div>
         <div class="field"><span class="label">配色主題</span><div class="btn-row" data-theme-current>${themeCurrent(s.palette)}</div></div>
         <fieldset class="field"><legend>深淺模式</legend>${segRadio('theme', MODES, s.theme, '深淺模式')}</fieldset>
         <fieldset class="field"><legend>一週從哪天開始</legend>${segRadio('weekStart', [['1', '星期一'], ['0', '星期日']], s.weekStart, '一週從哪天開始')}</fieldset>
