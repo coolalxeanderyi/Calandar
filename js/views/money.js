@@ -13,6 +13,11 @@ const ui = { month: '' };
 
 const monthLabel = (month) => `${Number(month.slice(0, 4))} 年 ${Number(month.slice(5))} 月`;
 
+// 上面三個大數字：「NT$」寫小一點，手機上五位數的金額才放得下（例如 NT$11,590）
+function statMoney(n, cur) {
+  return esc(fmtMoney(n, cur)).replace('NT$', '<span class="ms-cur">NT$</span>');
+}
+
 function dayLabel(key, today) {
   const base = `${fmtMonthDay(key)} 週${WEEKDAYS[weekdayOf(key)]}`;
   if (key === today) return `今天・${base}`;
@@ -151,9 +156,9 @@ export default {
       </div>
 
       <div class="money-stats">
-        <div class="money-stat"><span class="money-stat-label">支出</span><span class="money-stat-num">${fmtMoney(sum.out, cur)}</span></div>
-        <div class="money-stat"><span class="money-stat-label">收入</span><span class="money-stat-num">${fmtMoney(sum.in, cur)}</span></div>
-        <div class="money-stat"><span class="money-stat-label">結餘</span><span class="money-stat-num${sum.net < 0 ? ' is-neg' : ''}">${fmtMoney(sum.net, cur)}</span></div>
+        <div class="money-stat"><span class="money-stat-label">支出</span><span class="money-stat-num">${statMoney(sum.out, cur)}</span></div>
+        <div class="money-stat"><span class="money-stat-label">收入</span><span class="money-stat-num">${statMoney(sum.in, cur)}</span></div>
+        <div class="money-stat"><span class="money-stat-label">結餘</span><span class="money-stat-num${sum.net < 0 ? ' is-neg' : ''}">${statMoney(sum.net, cur)}</span></div>
       </div>
       ${budgetBox(sum, settings, month, today, cur)}
 

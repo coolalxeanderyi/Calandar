@@ -1386,6 +1386,7 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
 .money-stat-label { color: var(--ink-2); font-size: calc(14px * var(--fs)); }
 .money-stat-num { overflow: hidden; color: var(--ink); font-size: calc(24px * var(--fs)); line-height: 1.25; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .money-stat-num.is-neg { color: var(--coral-text); }
+.ms-cur { margin-right: 1px; font-size: 0.62em; }
 .money-others { margin: 8px 0 0; }
 .money-budget { margin-top: 14px; padding: 12px 16px; border: 2px solid var(--line); border-radius: 22px; background: var(--paper); }
 .money-budget-head { display: flex; justify-content: space-between; color: var(--ink-2); font-size: calc(14px * var(--fs)); font-variant-numeric: tabular-nums; }
@@ -1449,9 +1450,17 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
   .add-bar.money-add .btn, .add-bar.shop-add .btn { grid-column: auto; }
   .money-stats { gap: 8px; }
   .money-stat { padding: 10px 12px; border-radius: 18px; }
+  /* 手機上字調大時：三個數字改成一行一個，名稱在左、金額在右，不會被切掉 */
+  :root[data-font] .money-stats { grid-template-columns: 1fr; }
+  :root[data-font] .money-stat { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; }
   .money-stat-num { font-size: calc(18px * var(--fs)); }
   .money-month { min-width: 0; font-size: calc(18px * var(--fs)); }
   .shop-sum { flex-basis: 100%; text-align: left; }
+}
+@media (max-width: 380px) {
+  /* 比較窄的手機（例如 iPhone SE）：標準字體也一行一個 */
+  .money-stats { grid-template-columns: 1fr; }
+  .money-stat { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; }
 }
 
 /* 在選類別的地方直接新增類別 */
