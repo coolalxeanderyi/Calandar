@@ -33,6 +33,8 @@ export async function createFirebase(config, { emulators = false } = {}) {
     };
   }
 
+  const forms = createFormsApi(fb, db);
+
   return {
     auth: {
       onChange: (callback) => fb.onAuthStateChanged(auth, callback),
@@ -55,6 +57,39 @@ export async function createFirebase(config, { emulators = false } = {}) {
       },
     },
     dataFor: (uid) => createCloudBackend(fb, db, uid),
+    forms,
+  };
+}
+
+// 生日表單：forms/{表單編號}，朋友填的回覆在 forms/{表單編號}/responses。
+// 朋友不用登入就能填（form.html 直接呼叫 Firestore 的網址），規則見 firestore.rules。
+function createFormsApi(fb, db) {
+  const formRef = (id) => fb.doc(db, 'forms', id);
+  const answers = (id) => fb.collection(db, 'forms', id, 'responses');
+  const rows = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }), pending: d.metadata.hasPendingWrites }));
+  return {
+    watchMine(uid, onData, onError) {
+      const q = fb.query(fb.collection(db, 'forms'), fb.where('owner', '==', uid));
+      return fb.onSnapshot(q, { includeMetadataChanges: true }, (snap) => onData(rows(snap), snap.metadata.fromCache), onError);
+    },
+    watchResponses(formId, onData, onError) {
+      return fb.onSnapshot(answers(formId), (snap) => onData(rows(snap)), onError);
+    },
+    // 這兩個要等雲端確認（規則還沒貼的話會被擋，要讓畫面知道）
+    createForm: (id, data) => fb.setDoc(formRef(id), { ...data, createdAt: fb.serverTimestamp(), updatedAt: fb.serverTimestamp() }),
+    updateForm: (id, patch) => fb.updateDoc(formRef(id), { ...patch, updatedAt: fb.serverTimestamp() }),
+    deleteResponse: (formId, rid) => fb.deleteDoc(fb.doc(db, 'forms', formId, 'responses', rid)),
+    // 先刪回覆再刪表單（表單刪掉之後，規則就認不出回覆是誰的了）
+    async deleteForm(id) {
+      const snap = await fb.getDocsFromServer(answers(id));
+      const docs = snap.docs.map((d) => d.ref);
+      for (let i = 0; i < docs.length; i += 400) {
+        const batch = fb.writeBatch(db);
+        for (const ref of docs.slice(i, i + 400)) batch.delete(ref);
+        await batch.commit();
+      }
+      await fb.deleteDoc(formRef(id));
+    },
   };
 }
 

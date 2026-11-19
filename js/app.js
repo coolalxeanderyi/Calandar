@@ -29,6 +29,8 @@ import money from './views/money.js';
 import friends, { deleteFriend } from './views/friends.js';
 import { startAutoUpdate } from './update.js';
 import { bridgeOn, onExternalChange, startExternal, clearExternal, findEvent } from './gsync.js';
+import { initForms, startForms, stopForms, onFormsChange, forms, flushHidden } from './forms.js';
+import { setFormsEnv } from './formsui.js';
 
 const MODE_KEY = 'planner.v1.mode';
 const README_URL = 'https://github.com/coolalxeanderyi/Calandar#readme';
@@ -145,6 +147,7 @@ async function boot() {
   const config = await loadConfig();
   configured = isConfigured(config);
   projectId = configured ? config.projectId : '';
+  setFormsEnv({ configured, leaveDemo });
 
   if (localStorage.getItem(MODE_KEY) === 'demo') {
     startDemo();
@@ -160,6 +163,7 @@ async function boot() {
     const emulators = params.has('emulators') && ['localhost', '127.0.0.1'].includes(location.hostname);
     firebase = await createFirebase(config, { emulators });
     initGcal(firebase.auth);
+    initForms(firebase.forms, { projectId });
   } catch (err) {
     console.error(err);
     renderGate('error', '載入 Firebase 失敗。請確認網路連線，或檢查 firebase-config.js 的內容是否完整。');
@@ -168,6 +172,7 @@ async function boot() {
   firebase.auth.onChange((user) => {
     if (user) startCloud(user);
     else {
+      stopForms();
       store.disconnect();
       renderGate('login');
     }
@@ -207,6 +212,7 @@ function startCloud(user) {
   const data = firebase.dataFor(user.uid);
   store.connect(data, { mode: 'cloud', user: { uid: user.uid, email: user.email, name: user.displayName } });
   renderShell();
+  startForms(user.uid);
   offerMigration(data, user.uid);
 }
 
@@ -354,6 +360,14 @@ async function onGateClick(btn) {
 }
 
 // ---------- 主畫面 ----------
+function renderFormBadge() {
+  const badge = root.querySelector('[data-form-badge]');
+  if (!badge) return;
+  const n = forms.responses.length;
+  badge.hidden = !n;
+  badge.innerHTML = n ? `${n > 99 ? '99+' : n}<span class="sr-only">份新回覆</span>` : '';
+}
+
 function renderShell() {
   loadError = '';
   headSig = '';
@@ -379,13 +393,14 @@ function renderShell() {
       </header>
       <nav class="tabs" aria-label="主要頁面">
         <div class="tabs-inner">
-          ${NAV.map(([path, label, emoji]) => `<a class="tab" href="#/${path}" data-tab="${path}"><span class="tab-emoji" aria-hidden="true">${emoji}</span><span class="tab-label">${label}</span></a>`).join('')}
+          ${NAV.map(([path, label, emoji]) => `<a class="tab" href="#/${path}" data-tab="${path}"><span class="tab-emoji" aria-hidden="true">${emoji}</span><span class="tab-label">${label}</span>${path === 'friends' ? '<span class="tab-badge" data-form-badge hidden></span>' : ''}</a>`).join('')}
         </div>
       </nav>
       <main id="view" class="view" tabindex="-1"></main>
     </div>`;
   renderHead();
   renderView();
+  renderFormBadge();
 }
 
 const GCAL_TEXT = {
@@ -865,6 +880,12 @@ function wireEvents() {
       if (dir === 'left' && row.dataset.swipe === 'task') toast('重複的任務要點開來刪除，免得整串都不見');
     },
   });
+  // 朋友填了生日表單：朋友頁重畫，分頁上顯示有幾份新回覆
+  onFormsChange(() => {
+    renderFormBadge();
+    if (root.querySelector('.shell') && store.state.status === 'ready' && currentView === VIEWS.friends) renderView();
+  });
+  window.addEventListener('pagehide', flushHidden);
   // 天氣更新好了：在總覽的話重畫，換上新的天氣
   onWeather(() => {
     if (root.querySelector('.shell') && store.state.status === 'ready' && currentView === VIEWS['']) renderView();

@@ -1,7 +1,7 @@
 // 離線也能打開：把網站本身的檔案存在瀏覽器裡。
 // 任務、目標這些資料本來就由 Firestore 的離線快取處理，這裡只管網頁檔案。
 // 網站更新時把 VERSION 改成新的值（跟 js/update.js 的 APP_BUILD 一樣），舊的快取就會被清掉。
-const VERSION = 'planner-2026-11-19-1';
+const VERSION = 'planner-2026-11-19-2';
 
 const SHELL = [
   './',
@@ -20,6 +20,9 @@ const SHELL = [
   './js/dates.js',
   './js/datesui.js',
   './js/fontsize.js',
+  './js/forms.js',
+  './js/formsui.js',
+  './js/friendfmt.js',
   './js/friends.js',
   './js/firebase-sdk.js',
   './js/gas-code.js',
@@ -110,6 +113,9 @@ self.addEventListener('fetch', (event) => {
   }
   // 登入、雲端資料、Google 日曆：一律直接上網，不經過快取
   if (url.origin !== self.location.origin) return;
+
+  // 生日表單（給朋友填的頁面）一律直接上網，不存快取、也不轉回首頁
+  if (url.pathname.endsWith('/form.html') || url.pathname.endsWith('/css/form.css') || url.pathname.endsWith('/js/formpage.js')) return;
 
   if (request.mode === 'navigate') {
     const root = new URL('./', self.location);

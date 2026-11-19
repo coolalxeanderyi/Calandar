@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>生日小表單</title>
+  <meta name="robots" content="noindex">
+  <meta name="description" content="花 30 秒填一下你的生日和喜歡的東西。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="生日小表單 🎂">
+  <meta property="og:description" content="花 30 秒填一下你的生日和喜歡的東西，生日那天就不會被忘記。">
+  <meta property="og:image" content="https://coolalxeanderyi.github.io/Calandar/icons/form-og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#FFF6F3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1D1722" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&display=swap">
+  <link rel="stylesheet" href="css/form.css">
+  <script type="module" src="js/formpage.js"></script>
+</head>
+<body data-state="loading">
+  <main class="fp">
+    <div class="fp-hero" aria-hidden="true">
+      <div class="fp-cal">
+        <span class="fp-ring fp-ring-l"></span><span class="fp-ring fp-ring-r"></span>
+        <div class="fp-cal-top" data-cal-month>？月</div>
+        <div class="fp-cal-day" data-cal-day>？</div>
+        <div class="fp-cal-foot" data-cal-foot>你的生日</div>
+        <span class="fp-stamp">收到！</span>
+      </div>
+      <span class="fp-mascot" data-mascot></span>
+    </div>
+
+    <header class="fp-head">
+      <p class="fp-from" data-from></p>
+      <h1 class="fp-title" data-title>生日小表單</h1>
+      <p class="fp-intro" data-intro></p>
+    </header>
+
+    <p class="fp-loading" role="status">載入中…</p>
+
+    <form class="fp-form" novalidate>
+      <div class="fp-field">
+        <label for="fp-name">你的名字</label>
+        <input id="fp-name" name="name" maxlength="30" autocomplete="nickname" enterkeyhint="next" placeholder="暱稱也可以" aria-describedby="fp-name-err" required>
+        <p class="fp-err" id="fp-name-err" aria-live="polite"></p>
+      </div>
+
+      <fieldset class="fp-field">
+        <legend>生日</legend>
+        <div class="fp-bday">
+          <select name="month" aria-label="月" aria-describedby="fp-bday-err"><option value="">月</option></select>
+          <select name="day" aria-label="日" aria-describedby="fp-bday-err"><option value="">日</option></select>
+          <select name="year" aria-label="出生年（可不填）"><option value="">年（可不填）</option></select>
+        </div>
+        <p class="fp-next" data-next aria-live="polite"></p>
+        <p class="fp-err" id="fp-bday-err" aria-live="polite"></p>
+      </fieldset>
+
+      <div class="fp-field">
+        <label for="fp-likes">喜歡的東西 <span class="fp-opt">可不填</span></label>
+        <input id="fp-likes" name="likes" maxlength="300" autocomplete="off" enterkeyhint="next" placeholder="例如：貓、珍奶、樂高" aria-describedby="fp-likes-hint">
+        <p class="fp-hint" id="fp-likes-hint">用「、」或「，」隔開</p>
+        <p class="fp-chips" data-chips aria-hidden="true"></p>
+      </div>
+
+      <div class="fp-field">
+        <label for="fp-dislikes">不喜歡、雷點 <span class="fp-opt">可不填</span></label>
+        <input id="fp-dislikes" name="dislikes" maxlength="300" autocomplete="off" enterkeyhint="next" placeholder="例如：香菜、太甜的">
+      </div>
+
+      <div class="fp-field">
+        <label for="fp-note"><span data-note-label>還有什麼想讓我知道的？</span> <span class="fp-opt">可不填</span></label>
+        <textarea id="fp-note" name="note" rows="2" maxlength="300" placeholder="例如：最近迷上露營、對花生過敏"></textarea>
+      </div>
+
+      <button class="fp-send" type="submit">送出</button>
+      <p class="fp-err fp-send-err" data-send-err aria-live="assertive"></p>
+      <p class="fp-privacy" data-privacy>只有發表單的人看得到你填的內容。</p>
+    </form>
+
+    <section class="fp-done" aria-live="polite">
+      <h2 class="fp-done-title" data-done-title tabindex="-1">收到了！</h2>
+      <p data-done-text></p>
+      <ul class="fp-summary" data-summary></ul>
+      <button class="fp-again" type="button" data-again hidden>我填錯了，要修改</button>
+    </section>
+
+    <section class="fp-msg" role="alert">
+      <h2 class="fp-msg-title" data-msg-title></h2>
+      <p data-msg-text></p>
+      <button class="fp-again" type="button" data-reload hidden>重新整理</button>
+    </section>
+  </main>
+  <div class="fp-confetti" aria-hidden="true"></div>
+  <noscript><p class="fp-noscript">這個表單要開啟 JavaScript 才能填。</p></noscript>
+</body>
+</html>
