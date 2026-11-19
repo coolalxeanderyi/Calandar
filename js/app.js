@@ -26,19 +26,21 @@ import habits from './views/habits.js';
 import review from './views/review.js';
 import shopping from './views/shopping.js';
 import money from './views/money.js';
+import friends, { deleteFriend } from './views/friends.js';
 import { startAutoUpdate } from './update.js';
 import { bridgeOn, onExternalChange, startExternal, clearExternal, findEvent } from './gsync.js';
 
 const MODE_KEY = 'planner.v1.mode';
 const README_URL = 'https://github.com/coolalxeanderyi/Calandar#readme';
 
-const VIEWS = { '': dashboard, tasks, calendar, goals, habits, shopping, money, review };
+const VIEWS = { '': dashboard, tasks, calendar, goals, habits, friends, shopping, money, review };
 const NAV = [
   ['', '總覽', '🏠'],
   ['tasks', '任務', '✅'],
   ['calendar', '行事曆', '📅'],
   ['goals', '目標', '🎯'],
   ['habits', '習慣', '🌱'],
+  ['friends', '朋友', '🎁'],
   ['shopping', '購物', '🛒'],
   ['money', '記帳', '💰'],
   ['review', '回顧', '📝'],
@@ -856,6 +858,7 @@ function wireEvents() {
         return;
       }
       if (kind === 'shop') deleteShopItem(id);
+      else if (kind === 'friend') deleteFriend(id);
       else deleteTaskWithUndo(id);
     },
     onBlocked(row, dir) {

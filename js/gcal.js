@@ -12,6 +12,7 @@ import { isDone, isRepeating, repeatDaysOf, remindMinutes } from './model.js';
 import { addDays, toKey } from './utils.js';
 import { emojiOf } from './dates.js';
 import { plannerZone } from './zone.js';
+import { birthdayStart, sameAsDate, likesText } from './friends.js';
 import { bridgeOn, bridgeCall, SETUP_ERRORS, clearExternal } from './gsync.js';
 
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
@@ -178,6 +179,23 @@ export function desiredEvents(s = store.state) {
     // 2/29 的生日：平年放在 2/28（二月的最後一天）
     if (yearly) ev.recurrence = [d.date.slice(5) === '02-29' ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'RRULE:FREQ=YEARLY'];
     events.push(ev);
+  }
+  // 朋友的生日：每年重複，說明裡寫他喜歡什麼（重要日子裡已經有同一個人的就不重複）
+  for (const f of s.friends || []) {
+    if (!f.birthday || !f.remind || sameAsDate(f, s.dates)) continue;
+    const start = birthdayStart(f);
+    const description = [likesText(f, 20), f.dislikes.length ? `不喜歡：${f.dislikes.join('、')}` : '', f.note].filter(Boolean).join('\n');
+    events.push({
+      id: eventId('f', f.id),
+      summary: `🎂 ${f.name}生日`,
+      description,
+      transparency: 'transparent',
+      start: { date: start },
+      end: { date: addDays(start, 1) },
+      reminders: { useDefault: false, overrides: DATE_REMINDERS },
+      extendedProperties: { private: { planner: '1' } },
+      recurrence: [start.slice(5) === '02-29' ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1' : 'RRULE:FREQ=YEARLY'],
+    });
   }
   return events;
 }

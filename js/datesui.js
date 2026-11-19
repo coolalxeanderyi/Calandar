@@ -4,6 +4,7 @@ import { icon, openModal, fieldError, toast } from './ui.js';
 import { store } from './store.js';
 import { DATE_KINDS } from './model.js';
 import { dateInfo, sortDates, emojiOf, kindOf, todayLine } from './dates.js';
+import { birthdayInfo, sameAsDate, likesText, STRIP_DAYS } from './friends.js';
 
 const SHOW = 6; // 總覽最多放幾張
 const EMOJIS = ['✈️', '📝', '🎂', '💝', '🎓', '🏠', '🎄', '🎉', '💼', '🌱', '❤️', '⭐'];
@@ -41,15 +42,37 @@ const ticket = (d, info, today) => `<li><button type="button" class="day-ticket 
   </button></li>`;
 
 // 總覽的一排小卡
+// 朋友的生日（14 天內、還沒在重要日子裡的）
+function friendBirthdays(state, today, within = STRIP_DAYS) {
+  return (state.friends || [])
+    .map((f) => ({ f, info: birthdayInfo(f, today) }))
+    .filter(({ f, info }) => info && info.days <= within && !sameAsDate(f, state.dates))
+    .sort((a, b) => a.info.days - b.info.days || a.f.name.localeCompare(b.f.name, 'zh-Hant'));
+}
+
+const friendTicket = (f, info, today) => `<li><button type="button" class="day-ticket kind-birthday is-friend${info.days <= 7 ? ' is-soon' : ''}${info.isToday ? ' is-today' : ''}" data-action="open-friend" data-id="${esc(f.id)}">
+    <span class="dt-top"><span class="dt-emoji" aria-hidden="true">🎂</span><span class="dt-title">${esc(f.name)}</span>${info.age ? `<span class="dt-badge">${info.age} 歲</span>` : ''}</span>
+    ${info.isToday ? '<span class="dt-count is-today"><b>就是今天</b></span>' : `<span class="dt-count">還有 <b>${info.days}</b> 天</span>`}
+    <span class="dt-when">${esc(whenText(info.target, today))}</span>
+  </button></li>`;
+
+// 排順序：今天的最前面，再來是快到的（重要日子和朋友生日混在一起排）
+const rankOf = (info) => (info.isToday ? [0, 0] : info.counting ? [2, -Number(info.big)] : [1, info.days]);
+
 export function datesStrip(state, today = todayKey()) {
   const all = sortDates(state.dates || [], today).filter((x) => x.info);
-  const shown = all.filter((x) => !x.info.past).slice(0, SHOW);
-  const more = all.length - shown.length;
+  const friends = friendBirthdays(state, today);
+  const items = [
+    ...all.filter((x) => !x.info.past).map((x) => ({ rank: rankOf(x.info), friend: false, html: ticket(x.d, x.info, today) })),
+    ...friends.map((x) => ({ rank: rankOf(x.info), friend: true, html: friendTicket(x.f, x.info, today) })),
+  ].sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1]);
+  const shown = items.slice(0, SHOW);
+  const more = all.length - shown.filter((x) => !x.friend).length;
   return `<section class="dash-days" aria-labelledby="b-days">
     <header class="block-head"><h3 id="b-days" class="tape tape-2"><span aria-hidden="true">⏳</span>重要日子</h3>
       ${all.length ? `<button type="button" class="block-link link-btn" data-action="all-dates">${more > 0 ? `全部 ${all.length} 個` : '管理'}</button>` : ''}</header>
     <ul class="day-tickets">
-      ${shown.map(({ d, info }) => ticket(d, info, today)).join('')}
+      ${shown.map((x) => x.html).join('')}
       <li><button type="button" class="day-ticket is-add" data-action="new-date">
         <span class="dt-plus" aria-hidden="true">${icon('plus')}</span>
         <span class="dt-add-text">${all.length ? '新增' : '新增倒數日、生日、紀念日'}</span>
@@ -60,10 +83,15 @@ export function datesStrip(state, today = todayKey()) {
 
 // 今天是生日、紀念日、倒數的那天：小日曆會說一句
 export function specialLines(state, today = todayKey()) {
-  return sortDates(state.dates || [], today)
+  const dates = sortDates(state.dates || [], today)
     .map(({ d, info }) => (info?.isToday ? { emoji: emojiOf(d), text: todayLine(d, info) } : null))
-    .filter((x) => x && x.text)
-    .slice(0, 2);
+    .filter((x) => x && x.text);
+  // 朋友今天生日：順便說他喜歡什麼，挑禮物用
+  const friends = friendBirthdays(state, today, 0).map(({ f, info }) => {
+    const likes = likesText(f, 3);
+    return { emoji: '🎂', text: `今天是${f.name}生日！${info.age ? `（${info.age} 歲）` : ''}${likes ? ` ${likes}` : ''}` };
+  });
+  return [...dates, ...friends].slice(0, 3);
 }
 
 // ---------- 新增／編輯 ----------

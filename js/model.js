@@ -119,6 +119,7 @@ const DEFAULTS = {
   shopping: () => ({ name: '', qty: '', store: '', cat: '', price: null, note: '', done: false, doneAt: null, createdAt: 0, updatedAt: 0 }),
   ledger: () => ({ type: 'out', amount: 0, currency: '', cat: '', title: '', date: '', note: '', createdAt: 0, updatedAt: 0 }),
   dates: () => ({ title: '', date: '', kind: 'countdown', emoji: '', showAge: true, remind: true, note: '', createdAt: 0, updatedAt: 0 }),
+  friends: () => ({ name: '', birthday: '', group: '', likes: [], dislikes: [], note: '', remind: true, createdAt: 0, updatedAt: 0 }),
   reviews: () => ({ week: '', wins: '', improve: '', focus: ['', '', ''], createdAt: 0, updatedAt: 0 }),
   goals: () => ({ title: '', why: '', area: '', emoji: '🎯', deadline: '', status: 'active', progressMode: 'tasks', progress: 0, doneAt: null, createdAt: 0, updatedAt: 0 }),
   habits: () => ({ name: '', emoji: '✅', days: [...ALL_DAYS], log: {}, archived: false, order: 0, createdAt: 0, updatedAt: 0 }),
@@ -242,6 +243,20 @@ export function normalize(col, raw = {}) {
       updatedAt: num(d.updatedAt),
     };
   }
+  if (col === 'friends') {
+    return {
+      id: raw.id,
+      name: str(d.name, 30).trim(),
+      birthday: /^(?:\d{4}-|--)(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d.birthday || '') ? d.birthday : '', // 2001-03-14 或 --03-14（不知道年份）
+      group: str(d.group, 20).trim(),
+      likes: shortList(d.likes),
+      dislikes: shortList(d.dislikes),
+      note: str(d.note, 500),
+      remind: d.remind !== false,
+      createdAt: num(d.createdAt),
+      updatedAt: num(d.updatedAt),
+    };
+  }
   if (col === 'dates') {
     return {
       id: raw.id,
@@ -353,6 +368,12 @@ export function normalizeSettings(raw = {}) {
     weatherPlace: place(s.weatherPlace),
     timeZone: zoneName(s.timeZone),
   };
+}
+
+// 喜歡的東西這種短短的清單：最多 20 個，每個最多 30 個字
+function shortList(v) {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.map((x) => String(x ?? '').trim().slice(0, 30)).filter(Boolean))].slice(0, 20);
 }
 
 // 時區名稱（例如 Asia/Taipei）：瀏覽器認得才收

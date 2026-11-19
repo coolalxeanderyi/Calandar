@@ -1663,3 +1663,75 @@ body.is-tl-dragging, body.is-tl-dragging * { cursor: grabbing !important; -webki
   .mc-frame { grid-template-rows: 170px auto; }
   .mc-table th, .mc-table td { padding: 7px 6px; }
 }
+
+/* ---------- 朋友：生日和喜歡的東西 ---------- */
+.friend-add { grid-template-columns: minmax(0, 1fr) auto auto; }
+.friend-toolbar .search { order: -1; flex: 1 1 260px; max-width: 360px; margin-left: 0; }
+.friend-soon { margin: 6px 0 30px; }
+.friend-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(240px * var(--fs)), 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.friend-cards > li { display: flex; }
+.friend-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 14px 16px 16px;
+  border: 2px solid var(--line);
+  border-radius: 20px;
+  background: var(--paper);
+  box-shadow: 0 4px 0 var(--line);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.friend-card:hover { transform: translateY(-2px); }
+.friend-card:focus-visible, .friend-main:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.friend-card.is-today { border-color: var(--accent-strong); background: var(--accent-soft); box-shadow: 0 4px 0 var(--accent); }
+.fc-top { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+.fc-name { overflow: hidden; font-size: calc(17px * var(--fs)); white-space: nowrap; text-overflow: ellipsis; }
+.friend-card .fr-count { font-size: calc(14px * var(--fs)); }
+.friend-card .fr-count b { font-size: calc(28px * var(--fs)); line-height: 1.1; }
+.friend-card .fr-count.is-today, .friend-card .fr-count.is-soon { font-size: calc(20px * var(--fs)); }
+.fc-when { color: var(--ink-3); font-size: calc(13px * var(--fs)); }
+.fc-likes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.fc-label { margin-right: 2px; color: var(--ink-3); font-size: calc(12.5px * var(--fs)); }
+.fc-dislikes, .fc-note { display: -webkit-box; overflow: hidden; color: var(--ink-3); font-size: calc(13px * var(--fs)); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.friend-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: calc(34px * var(--fs));
+  height: calc(34px * var(--fs));
+  border: 2px solid var(--av, var(--line));
+  border-radius: 50%;
+  background: var(--wash);
+  background: color-mix(in srgb, var(--av, var(--wash)) 24%, var(--paper));
+  color: var(--ink);
+  font-size: calc(15px * var(--fs));
+  line-height: 1;
+}
+.friend-list { margin: 0; padding: 0; list-style: none; }
+.friend-row { border-bottom: 2px dashed var(--line); }
+.friend-row:last-child { border-bottom: 0; }
+.friend-main { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 2px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.fr-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.fr-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: calc(16px * var(--fs)); }
+.fr-sub { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--ink-3); font-size: calc(13.5px * var(--fs)); }
+.fr-count b { font-weight: inherit; }
+.fr-count.is-today, .fr-count.is-soon { color: var(--accent-text); }
+.fr-likes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 45%; }
+.tag.fr-more { background: transparent; color: var(--ink-3); }
+.birthday-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; }
+@media (max-width: 640px) {
+  .friend-add { grid-template-columns: 1fr 1fr; }
+  .friend-add input[name="name"] { grid-column: 1 / -1; }
+  .add-bar.friend-add .btn { grid-column: auto; }
+  .friend-toolbar .search { max-width: none; }
+  .friend-main { flex-wrap: wrap; }
+  .fr-likes { flex-basis: 100%; justify-content: flex-start; max-width: none; padding-left: calc(46px * var(--fs)); }
+  .birthday-row { grid-template-columns: 1fr 1fr; }
+  .birthday-row input { grid-column: 1 / -1; }
+}

@@ -3,7 +3,7 @@
 import { uid, DELETE } from './utils.js';
 import { normalize, normalizeSettings, newDoc, toStored, isDone, DEFAULT_SETTINGS } from './model.js';
 
-export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger', 'dates'];
+export const COLLECTIONS = ['tasks', 'goals', 'habits', 'reviews', 'journal', 'shopping', 'ledger', 'dates', 'friends'];
 
 const state = {
   status: 'idle', // idle | loading | ready
@@ -18,6 +18,7 @@ const state = {
   shopping: [], // 購物清單
   ledger: [], // 記帳簿
   dates: [], // 重要日子（倒數日、生日、紀念日）
+  friends: [], // 朋友（生日、喜歡的東西）
   settings: { ...DEFAULT_SETTINGS },
 };
 
@@ -84,6 +85,7 @@ export const store = {
       shopping: [],
       ledger: [],
       dates: [],
+      friends: [],
       settings: { ...DEFAULT_SETTINGS },
     });
     const seen = new Set();
@@ -290,6 +292,7 @@ export const store = {
       shopping: state.shopping,
       ledger: state.ledger,
       dates: state.dates,
+      friends: state.friends,
     };
   },
 

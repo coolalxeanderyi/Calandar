@@ -2,6 +2,7 @@
 import { esc, todayKey, fmtMonthDay, fmtWeekday, weekKeys, addDays } from '../utils.js';
 import { greetFor } from '../greet.js';
 import { datesStrip, specialLines, openDateModal, openDatesManager } from '../datesui.js';
+import { openFriendModal } from './friends.js';
 import { weatherFor, weatherLine, CREDIT_URL } from '../weather.js';
 import { openWeatherPlace } from '../settings.js';
 import { icon, toast } from '../ui.js';
@@ -192,6 +193,10 @@ export default {
     },
     'all-dates'() {
       openDatesManager();
+    },
+    'open-friend'(el) {
+      const f = store.state.friends.find((x) => x.id === el.dataset.id);
+      if (f) openFriendModal(f);
     },
     'weather-setup'() {
       openWeatherPlace();
