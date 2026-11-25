@@ -3,7 +3,7 @@
 // 程式刻意寫得很單純：要放進日曆的行程內容都由網站算好，這裡只負責讀寫 Google 日曆，
 // 這樣網站更新時，大部分情況都不用請使用者重新貼程式。
 // 真的要改這裡的程式時，把 SCRIPT_VERSION 加一，設定裡會提醒使用者更新。
-export const SCRIPT_VERSION = 2;
+export const SCRIPT_VERSION = 3;
 
 export function scriptCode(key) {
   return TEMPLATE.replace('__PLANNER_KEY__', key).replace('__VERSION__', String(SCRIPT_VERSION));
@@ -15,6 +15,7 @@ const TEMPLATE = String.raw`/**
  * 這段程式讓「計劃版」網站和你的 Google 日曆自動同步：
  *   - 計劃版有日期的任務和目標期限，會放進 Google 日曆裡的「計劃版」日曆
  *   - 你 Google 日曆裡的行程，會顯示在計劃版的行事曆和「今天」（只會讀，不會改）
+ *     你在 Google 日曆新增、修改或刪掉行程，計劃版開著的時候大約 30 秒內就會跟著更新
  *   - 每天把計劃版的資料備份一份到你的 Google 雲端硬碟（「計劃版備份」資料夾，留最近 30 份）
  *
  * 它在你自己的 Google 帳號裡執行，只有知道下面那組密碼的計劃版能使用它。
@@ -67,6 +68,7 @@ function route_(req) {
     return { ok: true, calendars: listCalendars_(), plannerCalendarId: props_().getProperty('plannerCalendarId') || '' };
   }
   if (req.action === 'events') return listEvents_(req);
+  if (req.action === 'changes') return changes_(req);
   if (req.action === 'sync') return sync_(req);
   if (req.action === 'backup') return backup_(req);
   return { ok: false, error: 'bad-action' };
@@ -118,15 +120,22 @@ function isPlannerEvent_(ev) {
   return !!(ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.planner === '1');
 }
 
-function listEvents_(req) {
-  var from = new Date(req.from);
-  var to = new Date(req.to);
-  if (isNaN(from.getTime()) || isNaN(to.getTime()) || to <= from) return { ok: false, error: 'bad-range' };
+// 要讀哪些日曆：計劃版有指定就用指定的，沒有就用你在 Google 日曆裡勾選顯示的
+function calendarIds_(req) {
   var ids = req.calendars;
   if (typeof ids === 'string') ids = ids ? ids.split(',') : [];
   if (!ids || !ids.length) {
     ids = listCalendars_().filter(function (c) { return c.selected; }).map(function (c) { return c.id; });
   }
+  return ids;
+}
+
+function listEvents_(req) {
+  var started = new Date();
+  var from = new Date(req.from);
+  var to = new Date(req.to);
+  if (isNaN(from.getTime()) || isNaN(to.getTime()) || to <= from) return { ok: false, error: 'bad-range' };
+  var ids = calendarIds_(req);
   var skip = props_().getProperty('plannerCalendarId') || '';
   var events = [];
   var errors = [];
@@ -164,7 +173,38 @@ function listEvents_(req) {
       errors.push({ cal: calId, message: message_(err) });
     }
   }
-  return { ok: true, events: events, errors: errors };
+  return { ok: true, events: events, errors: errors, now: started.toISOString() };
+}
+
+// ---------- 有沒有變動（計劃版開著的時候大約每 30 秒問一次） ----------
+// 只回答「哪些行程在這段時間被新增、修改或刪掉」，不會把行程內容傳回去，所以很快。
+// 多往前看 1 分鐘，免得剛改的行程 Google 還沒準備好就錯過；重複的計劃版自己會認得。
+function changes_(req) {
+  var now = new Date();
+  var since = new Date(req.since);
+  if (isNaN(since.getTime())) return { ok: false, error: 'bad-range' };
+  // 太久以前的變動 Google 不給查：請計劃版整個重新讀
+  if (now.getTime() - since.getTime() > 7 * 24 * 3600 * 1000) return { ok: true, now: now.toISOString(), items: [], more: true };
+  var min = new Date(since.getTime() - 60 * 1000).toISOString();
+  var ids = calendarIds_(req);
+  var skip = props_().getProperty('plannerCalendarId') || '';
+  var items = [];
+  for (var i = 0; i < ids.length; i++) {
+    var calId = String(ids[i] || '');
+    if (!calId || calId === skip) continue;
+    try {
+      var res = Calendar.Events.list(calId, { updatedMin: min, showDeleted: true, maxResults: 50, fields: 'items(id,updated,extendedProperties),nextPageToken' });
+      var list = res.items || [];
+      for (var j = 0; j < list.length; j++) {
+        if (isPlannerEvent_(list[j])) continue;
+        items.push({ cal: calId, id: list[j].id, u: list[j].updated || '' });
+      }
+      if (res.nextPageToken || items.length > 50) return { ok: true, now: now.toISOString(), items: [], more: true };
+    } catch (err) {
+      // 這個日曆讀不到（例如別人取消共用）：跳過，讀行程的時候會再顯示錯誤
+    }
+  }
+  return { ok: true, now: now.toISOString(), items: items, more: false };
 }
 
 // ---------- 把計劃版的任務放進「計劃版」日曆 ----------

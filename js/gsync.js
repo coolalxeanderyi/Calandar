@@ -10,9 +10,16 @@ import { toKey, fromKey, addDays, todayKey } from './utils.js';
 
 const CACHE_KEY = 'planner.gs.events';
 const INFO_KEY = 'planner.gs.info';
-const FRESH = 5 * 60_000; // 行程多久重新抓一次
+const SINCE_KEY = 'planner.gs.since';
+const FRESH = 5 * 60_000; // 舊版 Apps Script：行程多久算舊了
 const RETRY = 60_000; // 抓失敗後，多久之後才再試
 const MAX_MONTHS = 8; // 這台裝置最多記住幾個月的行程
+// Google 日曆有變動就自動更新：新版 Apps Script 會回答「從某個時間之後，哪些行程改過」
+export const CHANGES_VERSION = 3;
+const CHECK_EVERY = 30_000; // 開著的時候，每 30 秒問一次有沒有變動（很輕，不會把行程全部傳回來）
+const BACK_GAP = 5_000; // 切回計劃版時馬上問，但最快 5 秒一次
+const OLD_REFRESH = 2 * 60_000; // 舊版 Apps Script 不會回答：每 2 分鐘整個重新讀
+const CHECKED_LIMIT = 30 * 60_000; // 有在問的話，行程最多放 30 分鐘就重新讀一次（保險）
 
 export const SCRIPT_URL_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/?#]+\/|macros\/)s\/[\w-]{20,}\/exec$/;
 
@@ -146,6 +153,7 @@ export async function pingBridge({ url, key } = {}) {
   };
   infoError = '';
   writeJSON(INFO_KEY, info);
+  if (info.version >= CHANGES_VERSION) check.none = false; // 換成新版了
   memo = new Map(); // 日曆的名稱和顏色可能變了
   emit();
   setTimeout(autoBackup, 0);
@@ -218,6 +226,10 @@ const queued = new Set();
 const inflight = new Set();
 let lastMonths = [];
 let memo = new Map(); // 月份 → 整理好的行程
+let dirtyAt = 0; // 最近一次發現 Google 日曆有變動的時間（在這之前開始抓的行程都算舊的）
+let fetchedAt = 0; // 上次整個讀回來的時間
+const check = { busy: false, at: 0, none: false }; // none：這版 Apps Script 不會回答「有沒有變動」
+const seen = new Set(); // 已經處理過的變動（同一個變動可能連續被回報兩三次）
 
 function cacheSig() {
   const s = store.state.settings;
@@ -354,13 +366,21 @@ export function findEvent(key, startMs) {
   return null;
 }
 
+// 有在問「有沒有變動」的話，行程沒變就不用一直重新讀
+const canCheck = () => !check.none && (currentInfo()?.version || 0) >= CHANGES_VERSION;
+
+function isFresh(entry, now) {
+  if (!entry || entry.stale) return false;
+  return now - entry.at < (canCheck() && getSince() ? CHECKED_LIMIT : FRESH);
+}
+
 function request(months) {
   const now = Date.now();
   if (pullError && now - pullErrorAt < RETRY) return;
   let added = false;
   for (const m of months) {
     const entry = cache.months[m];
-    if (inflight.has(m) || (entry && now - entry.at < FRESH)) continue;
+    if (inflight.has(m) || isFresh(entry, now)) continue;
     if (!queued.has(m)) {
       queued.add(m);
       added = true;
@@ -386,6 +406,8 @@ async function pump() {
   loading = true;
   const sig = cacheSig();
   const s = store.state.settings;
+  const startedAt = Date.now();
+  let stale = false;
   try {
     const payload = {
       from: monthStart(run[0]).toISOString(),
@@ -397,12 +419,17 @@ async function pump() {
     if (sig !== cacheSig() || !bridgeOn()) return; // 設定在這段時間改了（或中斷連接了），這次的結果不要了
     const raw = (Array.isArray(data.events) ? data.events : []).filter((e) => e && e.cal !== s.gcalId);
     const at = Date.now();
+    // 讀的途中發現 Google 日曆又有變動：這次讀到的可能是改之前的，等一下再讀一次
+    stale = startedAt < dirtyAt;
     for (const m of run) {
       const from = `${m}-01`;
       const to = addDays(`${nextMonth(m)}-01`, -1);
-      cache.months[m] = { at, raw: raw.filter((e) => String(e.start).slice(0, 10) <= to && String(e.end || e.start).slice(0, 10) >= from) };
+      cache.months[m] = { at, stale, raw: raw.filter((e) => String(e.start).slice(0, 10) <= to && String(e.end || e.start).slice(0, 10) >= from) };
     }
     pullError = '';
+    fetchedAt = at;
+    noteVersion(data.version);
+    if (data.now && !getSince()) setSince(data.now); // 從這次讀的時間開始，之後只要問有沒有變動
     saveCache();
   } catch (err) {
     pullError = err.message;
@@ -411,24 +438,106 @@ async function pump() {
     for (const m of run) inflight.delete(m);
     loading = false;
     emit();
+    if (stale) request(lastMonths);
     if (queued.size) setTimeout(pump, 0);
   }
 }
 
-// 回到這個分頁、重新連上網路，還有每 5 分鐘，重新整理看得到的那幾個月
+// ---------- Google 日曆有變動就自動更新 ----------
+// 「從什麼時候開始問」用 Google 那邊的時間，每台裝置、每種日曆選法各記各的
+function getSince() {
+  const v = readJSON(SINCE_KEY);
+  return v && v.sig === cacheSig() && typeof v.since === 'string' ? v.since : '';
+}
+function setSince(since) {
+  writeJSON(SINCE_KEY, since ? { sig: cacheSig(), since } : null);
+}
+
+// 換了新版 Apps Script：馬上開始用新功能
+function noteVersion(version) {
+  const v = Number(version) || 0;
+  const cur = currentInfo();
+  if (!v || !cur || cur.version === v) return;
+  cur.version = v;
+  writeJSON(INFO_KEY, cur);
+  if (v >= CHANGES_VERSION) check.none = false;
+}
+
+// 有變動：所有記住的月份都算舊的，看得到的那幾個月馬上重新讀
+function markStale() {
+  dirtyAt = Date.now();
+  if (cache) for (const entry of Object.values(cache.months)) entry.stale = true;
+}
+
+function calendarPayload() {
+  const s = store.state.settings;
+  return s.gsPick ? { calendars: s.gsCals.filter((id) => id && id !== s.gcalId) } : {};
+}
+
+async function checkChanges() {
+  const since = getSince();
+  if (check.busy || !since) return;
+  const s = store.state.settings;
+  if (s.gsPick && !calendarPayload().calendars.length) return; // 沒有要顯示的日曆
+  // 太久沒問（例如一個禮拜沒打開）：直接整個重新讀
+  if (Date.now() - Date.parse(since) > 6 * 24 * 3600_000) {
+    setSince('');
+    markStale();
+    request(lastMonths);
+    return;
+  }
+  check.busy = true;
+  check.at = Date.now();
+  const sig = cacheSig();
+  try {
+    const data = await bridgeCall('changes', { since, ...calendarPayload() }, { timeout: 30_000 });
+    if (sig !== cacheSig() || !bridgeOn()) return;
+    let changed = !!data.more;
+    for (const it of Array.isArray(data.items) ? data.items : []) {
+      const k = `${it.cal}|${it.id}|${it.u}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        changed = true;
+      }
+    }
+    if (seen.size > 400) for (const k of [...seen].slice(0, seen.size - 200)) seen.delete(k);
+    noteVersion(data.version);
+    if (data.now) setSince(data.now);
+    if (changed) {
+      markStale();
+      request(lastMonths);
+    }
+  } catch (err) {
+    if (err.code === 'bad-action') check.none = true; // 其實還是舊版：改回定時整個重新讀
+  } finally {
+    check.busy = false;
+  }
+}
+
+// 每 10 秒、切回這個分頁、重新連上網路的時候看一下要不要更新
+function tick(back = false) {
+  if (document.visibilityState !== 'visible' || !bridgeOn() || !lastMonths.length) return;
+  currentCache();
+  const now = Date.now();
+  if (back) pullError = '';
+  if (canCheck() && getSince()) {
+    if (!loading && now - check.at >= (back ? BACK_GAP : CHECK_EVERY)) checkChanges();
+  } else if (now - fetchedAt >= (back ? 15_000 : canCheck() ? CHECK_EVERY : OLD_REFRESH)) {
+    markStale(); // 舊版 Apps Script（或還不知道從哪裡開始問）：整個重新讀
+  }
+  request(lastMonths);
+}
+
+// 開著的時候一直看著 Google 日曆：切回這個分頁、重新連上網路時馬上看，平常每 10 秒看一下要不要問
 let started = false;
 export function startExternal() {
   if (started) return;
   started = true;
-  const again = () => {
-    if (document.visibilityState !== 'visible' || !bridgeOn() || !lastMonths.length) return;
-    currentCache();
-    pullError = '';
-    request(lastMonths);
-  };
-  document.addEventListener('visibilitychange', again);
-  window.addEventListener('online', again);
-  setInterval(again, FRESH);
+  const back = () => tick(true);
+  document.addEventListener('visibilitychange', back);
+  window.addEventListener('focus', back);
+  window.addEventListener('online', back);
+  setInterval(() => tick(false), 10_000);
   // 每天備份一次：打開後過一下、回到這個分頁、每 5 分鐘檢查一次
   const backupLater = () => {
     if (document.visibilityState === 'visible') autoBackup();
@@ -508,7 +617,12 @@ export function clearExternal({ revoke = false } = {}) {
   backupError = '';
   backupTriedAt = 0;
   queued.clear();
+  seen.clear();
+  check.none = false;
+  check.at = 0;
+  fetchedAt = 0;
   writeJSON(CACHE_KEY, null);
   writeJSON(INFO_KEY, null);
+  writeJSON(SINCE_KEY, null);
   emit();
 }

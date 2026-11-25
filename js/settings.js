@@ -12,7 +12,7 @@ import {
   bridgeOn, pingBridge, refreshInfo, checkScriptUrl, newKey, externalState, pickerCalendars, onExternalChange, reloadExternal,
 } from './gsync.js';
 import { scriptCode, SCRIPT_VERSION } from './gas-code.js';
-import { backupNow, backupState, onBackupChange, BACKUP_VERSION } from './gsync.js';
+import { backupNow, backupState, onBackupChange, BACKUP_VERSION, CHANGES_VERSION } from './gsync.js';
 import { allTags, tagVar, colorName, ensureTags, renameTag, cycleTagColor, deleteTag, MAX_TAGS } from './tags.js';
 import { FONT_SIZES, fontScale, setFontScale } from './fontsize.js';
 import { searchPlaces, CREDIT_URL } from './weather.js';
@@ -756,7 +756,8 @@ function bridgeStatus() {
     : `<p class="hint">${ext.infoError ? esc(ext.infoError) : '正在讀取你的日曆清單…'}</p>`;
   return `
     <p class="settings-text gs-on">${icon('check')}已連接，會自動同步。</p>
-    ${ext.version && ext.version < SCRIPT_VERSION ? '<p class="gs-warn" role="status">Apps Script 裡的程式有新版本了。請照下面「更新 Apps Script」的步驟換成新的程式碼。</p>' : ''}
+    ${ext.version && ext.version < SCRIPT_VERSION ? `<p class="gs-warn" role="status">Apps Script 裡的程式有新版本了${ext.version < CHANGES_VERSION ? '：換成新的之後，你在 Google 日曆改了行程，這裡大約 30 秒內就會更新（現在要等 2 分鐘）' : ''}。請照下面「更新 Apps Script」的步驟換成新的程式碼。</p>` : ''}
+    ${ext.version >= CHANGES_VERSION ? '<p class="hint gs-live">你在 Google 日曆新增、修改或刪掉行程，計劃版開著的時候大約 30 秒內就會更新；切回計劃版時會馬上檢查。</p>' : ''}
     <fieldset class="field gs-cals"><legend>在計劃版顯示這些日曆的行程</legend>
       ${calList}
       ${ext.error ? `<p class="hint is-error" role="status">${esc(ext.error)}</p>` : ''}
